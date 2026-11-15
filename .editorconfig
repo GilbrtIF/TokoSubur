@@ -1,0 +1,31 @@
+# EditorConfig is awesome: https://EditorConfig.org
+
+# Beri tahu editor bahwa ini adalah file root
+root = true
+
+# ============================================
+# Pengaturan Universal (Berlaku untuk semua file)
+# ============================================
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# ============================================
+# Pengaturan Spesifik per Bahasa
+# ============================================
+
+# Python (AI Service) menggunakan indentasi 4 spasi
+[*.py]
+indent_size = 4
+
+# Markdown (Dokumentasi) tidak perlu menghapus spasi di akhir baris (karena di Markdown, 2 spasi berarti baris baru)
+[*.md]
+trim_trailing_whitespace = false
+
+# YAML (Docker/Konfigurasi) menggunakan indentasi 2 spasi
+[*.yml]
+indent_size = 2

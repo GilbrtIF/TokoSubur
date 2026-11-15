@@ -1,0 +1,24 @@
+# ============================================
+# CODEOWNERS - Penjaga Konflik Push
+# ============================================
+
+# Front-End (Reyana)
+/apps/web/src/pages/         @username-reyana
+/apps/web/src/components/    @username-reyana
+
+# Back-End (Anisa)
+/apps/api/src/controllers/   @username-anisa
+/apps/api/src/services/      @username-anisa
+/apps/api/src/routes/        @username-anisa
+
+# Full-Stack / PM (Gilbert)
+/packages/contracts/         @username-gilbert
+/apps/api/src/integrations/  @username-gilbert
+/apps/web/src/pages/Dashboard/ @username-gilbert
+/apps/web/src/pages/AiAgent/   @username-gilbert
+/.github/                    @username-gilbert
+
+# AI & DS (Jauza, Kukuh, Zuyyina)
+/apps/ml-service/app/        @username-jauza @username-kukuh
+/apps/ml-service/notebooks/  @username-zuyyina
+/data/                       @username-zuyyina
