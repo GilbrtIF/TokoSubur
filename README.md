@@ -1,26 +1,35 @@
-# Tokosubu - Global Onboarding Guide
+Tokosubur - Global Onboarding Guide
 
-Selamat datang di proyek Tokosubu! Dokumen ini adalah panduan setup awal untuk **SEMUA ANGGOTA TIM**. Sebelum menyentuh kode Front-End, Back-End, atau AI, ikuti langkah di sini terlebih dahulu.
+Selamat datang di proyek Tokosubu! Dokumen ini adalah panduan setup awal untuk SEMUA ANGGOTA TIM. Sebelum menyentuh kode Front-End, Back-End, atau AI, ikuti langkah di sini terlebih dahulu.
 
-## 1. Prasyarat (Wajib Diinstal di Laptop Windows)
-- **Git:** [Download Git](https://git-scm.com/download/win) (pilih "Git Bash" saat instalasi).
-- **Node.js (v24 LTS):** [Download Node.js](https://nodejs.org/en).
-- **Python (v3.13):** [Download Python](https://www.python.org/downloads/). *PENTING: Centang "Add Python to PATH" saat instalasi!*
-- **VS Code:** [Download VS Code](https://code.visualstudio.com/).
+🛠️ 1. Prasyarat (Wajib Diinstal di Laptop Windows)
 
-## 2. Setup Git & Clone Repository
-Buka **Git Bash** (bukan CMD/PowerShell) dan jalankan:
-```bash
+Git: Download Git (pilih "Git Bash" saat instalasi).
+
+Node.js (v24 LTS): Download Node.js.
+
+Python (v3.13): Download Python.
+
+PENTING: Centang "Add Python to PATH" saat instalasi!
+
+VS Code: Download VS Code.
+
+💻 2. Setup Git & Clone Repository
+
+Buka Git Bash (bukan CMD/PowerShell) dan jalankan perintah berikut:
+
 # Set identitas Git (ganti dengan nama dan email GitHub-mu)
 git config --global user.name "Nama Kamu"
 git config --global user.email "email@kamu.com"
 
 # Clone repository (pastikan kamu sudah diundang ke repo GitHub)
 git clone https://github.com/username-kamu/tokosubu.git
-cd tokosubur
+cd tokosubu
 
-Struktur Monorepo Final (Visual)
-tokosubur/
+
+📂 3. Struktur Monorepo Final (Visual)
+
+tokosubu/
 │
 ├── .github/
 │   └── CODEOWNERS
@@ -44,8 +53,13 @@ tokosubur/
 ├── .gitignore
 └── README.md
 
-alur pekerjaan 
-FS
-Front-End, cukup kerjakan app/web 
-Back-End, cukup kerjakan app/Api
-Ai-engginer, cukup kerjakankan app/ml-services
+
+👥 4. Alur Pekerjaan Berdasarkan Role
+
+Full-Stack (FS): Mengelola keseluruhan arsitektur, integrasi, dan review lintas layanan.
+
+Front-End: Cukup fokus mengerjakan direktori apps/web/.
+
+Back-End: Cukup fokus mengerjakan direktori apps/api/.
+
+AI Engineer / Data Scientist: Cukup fokus mengerjakan direktori apps/ml-service/.
