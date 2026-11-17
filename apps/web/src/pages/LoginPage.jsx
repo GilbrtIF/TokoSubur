@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../hooks/useAuth';
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../hooks/useAuth";
+import { loginService } from "../services/authService";
 import LoginInput from "../components/LoginInput";
 
 function LoginPage() {
@@ -14,26 +15,25 @@ function LoginPage() {
     setSubmitting(true);
     setErrorMessage('');
 
-    // SIMULASI MOCK API
-    setTimeout(() => {
-      if (username === 'admin' && password === 'password123') {
-        const fakeToken = 'mock-jwt-token-xyz-123';
-        
-        login(fakeToken); // 1. Simpan token ke context
-        navigate('/dashboard'); // 2. ✅ PERBAIKAN: Gunakan string URL, bukan komponen
-        
-      } else {
-        setErrorMessage('Username atau password salah (Gunakan: admin / password123)');
-        setSubmitting(false);
-      }
-    }, 1000);
+    try {
+      // Panggil simulasi API dari authService
+      const response = await loginService({ username, password });
+      
+      // Jika sukses, simpan token & data user ke context
+      login(response.accessToken, response.user); 
+      
+      // Arahkan ke dashboard
+      navigate('/dashboard');
+      
+    } catch (error) {
+      // Jika gagal, tampilkan pesan error dari service
+      setErrorMessage(error.message);
+      setSubmitting(false);
+    }
   }
 
   return (
-    // Background krem muda dan layout terpusat
     <div className="min-h-screen bg-[#FAF9F6] flex items-center justify-center p-4 font-sans">
-      
-      {/* Card Putih Utama */}
       <div className="w-full max-w-md bg-white rounded-[32px] p-8 md:p-10 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
         
         {/* Logo dan Judul */}
@@ -54,7 +54,7 @@ function LoginPage() {
           </p>
         </div>
         
-        {/* Komponen Form Input */}
+        {/* ✅ PERBAIKAN: Hanya kirim props yang dibutuhkan */}
         <LoginInput onLogin={handleLogin} submitting={submitting} />
         
         {/* Pesan Error */}
@@ -65,6 +65,16 @@ function LoginPage() {
             </p>
           </div>
         )}
+
+        {/* Info Akun Dummy untuk Uji Coba */}
+        <div className="mt-8 pt-6 border-t border-gray-100">
+          <p className="text-xs text-gray-400 text-center mb-2">Akun untuk Uji Coba:</p>
+          <div className="flex flex-col items-center gap-1 text-xs text-gray-500">
+            <span><strong>fauzi</strong> / fauzi123 (Owner)</span>
+            <span><strong>istri</strong> / istri123 (Co-Owner)</span>
+          </div>
+        </div>
+
       </div>
     </div>
   );

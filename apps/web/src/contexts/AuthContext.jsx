@@ -1,32 +1,36 @@
+// src/contexts/AuthContext.jsx
 import { createContext, useState } from 'react';
 import PropTypes from 'prop-types';
 
-// 1. Buat Context
 export const AuthContext = createContext(null);
 
-// 2. Buat Provider Component
 export function AuthProvider({ children }) {
-  // Lazy initialization: Ambil token dari localStorage saat pertama kali load
-  const [token, setToken] = useState(() => {
-    return localStorage.getItem('accessToken') || null;
+  const [token, setToken] = useState(() => localStorage.getItem('accessToken') || null);
+  // Tambahkan state untuk menyimpan data user
+  const [user, setUser] = useState(() => {
+    const savedUser = localStorage.getItem('userData');
+    return savedUser ? JSON.parse(savedUser) : null;
   });
 
-  // Fungsi untuk login
-  const login = (accessToken) => {
+  // Ubah parameter login agar menerima token dan data user
+  const login = (accessToken, userData) => {
     setToken(accessToken);
+    setUser(userData);
     localStorage.setItem('accessToken', accessToken);
+    localStorage.setItem('userData', JSON.stringify(userData));
   };
 
-  // Fungsi untuk logout
   const logout = () => {
     setToken(null);
+    setUser(null);
     localStorage.removeItem('accessToken');
+    localStorage.removeItem('userData');
   };
 
-  // Nilai yang akan dibagikan ke seluruh aplikasi
   const authValue = {
     token,
-    isAuthenticated: !!token, // Mengubah string token menjadi boolean (true/false)
+    user, // <-- Ekspos data user
+    isAuthenticated: !!token,
     login,
     logout,
   };
