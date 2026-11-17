@@ -1,6 +1,15 @@
-import PropTypes from 'prop-types';
+import { useAuth } from '../hooks/useAuth';
+import { useNavigate } from 'react-router-dom';
 
-function DashboardPage({ onLogout }) {
+function DashboardPage() {
+  const { logout, token } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
   return (
     <div className="max-w-4xl mx-auto">
       {/* Kartu Sambutan */}
@@ -17,7 +26,7 @@ function DashboardPage({ onLogout }) {
           Selamat Datang di SuburOnline!
         </h1>
         <p className="text-gray-500 mb-8 max-w-lg">
-          Anda berhasil login ke sistem Inventory. Halaman ini adalah *placeholder* sementara untuk menguji coba Layout dan Routing.
+          Anda berhasil login ke sistem Inventory. Halaman ini adalah <em>placeholder</em> sementara untuk menguji coba Layout dan Routing.
         </p>
 
         {/* Kotak Info */}
@@ -31,14 +40,16 @@ function DashboardPage({ onLogout }) {
           <div className="md:text-right">
             <p className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-1">Token Akses</p>
             <p className="text-xs text-gray-500 font-mono bg-gray-200 px-2 py-1 rounded-md truncate max-w-[200px]">
-              mock-jwt-token-xyz-123
+              {/* ✅ PERBAIKAN: Tampilkan token dari context */}
+              {token} 
             </p>
           </div>
         </div>
 
         {/* Tombol Logout */}
         <button 
-          onClick={onLogout}
+          type="button" // ✅ PERBAIKAN: Tambahkan type="button"
+          onClick={handleLogout}
           className="inline-flex items-center justify-center gap-2 bg-gray-900 hover:bg-black text-white font-medium text-sm rounded-full px-6 py-3 transition-colors"
         >
           Logout dari Sistem
@@ -52,8 +63,5 @@ function DashboardPage({ onLogout }) {
   );
 }
 
-DashboardPage.propTypes = {
-  onLogout: PropTypes.func.isRequired,
-};
-
+// ✅ PERBAIKAN: Hapus DashboardPage.propTypes karena tidak ada props lagi
 export default DashboardPage;

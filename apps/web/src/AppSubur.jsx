@@ -1,27 +1,12 @@
-import { useState } from 'react'; // useEffect tidak dipakai lagi, kita hapus
-import { Route, Routes, useNavigate, Navigate } from 'react-router-dom';
-import LoginPage from '../src/pages/LoginPage'; // Sesuaikan path
-import DashboardPage from '../src/pages/Dashboard'; 
-import MainLayout from '../src/components/layout/MainLayout'; // Import Layout
+import { Route, Routes, Navigate } from 'react-router-dom';
+import LoginPage from './pages/LoginPage'; 
+import DashboardPage from '../src/pages/Dashboard'; // Pastikan nama file ini benar
+import MainLayout from './components/layout/MainLayout'; 
+import { useAuth } from './hooks/useAuth'; // <-- IMPORT CUSTOM HOOK KITA
 
 function AppSubur() {
-  const [token, setToken] = useState(() => {
-    return localStorage.getItem('accessToken') || null;
-  });
-  
-  const navigate = useNavigate();
-
-  const login = (accessToken) => {
-    setToken(accessToken);
-    localStorage.setItem('accessToken', accessToken);
-    navigate('/dashboard'); 
-  };
-
-  const logout = () => {
-    setToken(null);
-    localStorage.removeItem('accessToken');
-    navigate('/login');
-  };
+  // Ambil status login dari AuthContext
+  const { isAuthenticated } = useAuth();
 
   return (
     <Routes>
@@ -29,24 +14,24 @@ function AppSubur() {
       <Route 
         path="/login" 
         element={
-          token ? <Navigate to="/dashboard" replace /> : <LoginPage onLoginSuccess={login} />
+          // Jika sudah login, lempar ke dashboard. Jika belum, tampilkan LoginPage
+          isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage />
         } 
       />
       
       {/* Route Dashboard (Dengan Sidebar/MainLayout) */}
-      {token && (
+      {isAuthenticated && (
         <Route element={<MainLayout />}>
           <Route 
             path="/dashboard" 
-            element={<DashboardPage onLogout={logout} />} 
+            element={<DashboardPage />} 
           />
-          {/* Anda bisa menambahkan route lain di sini nantinya, misal: */}
-          {/* <Route path="/inventory" element={<InventoryPage />} /> */}
+          {/* Tambahkan route lain di sini nantinya */}
         </Route>
       )}
       
       {/* Default route */}
-      <Route path="*" element={<Navigate to={token ? "/dashboard" : "/login"} replace />} />
+      <Route path="*" element={<Navigate to={isAuthenticated ? "/dashboard" : "/login"} replace />} />
     </Routes>
   );
 }

@@ -1,8 +1,12 @@
 import { useState } from 'react';
-import PropTypes from 'prop-types';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
 import LoginInput from "../components/LoginInput";
 
-function LoginPage({ onLoginSuccess }) {
+function LoginPage() {
+  const { login } = useAuth();
+  const navigate = useNavigate();
+  
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -10,11 +14,14 @@ function LoginPage({ onLoginSuccess }) {
     setSubmitting(true);
     setErrorMessage('');
 
-    // SIMULASI MOCK API (Disesuaikan dengan username)
+    // SIMULASI MOCK API
     setTimeout(() => {
       if (username === 'admin' && password === 'password123') {
         const fakeToken = 'mock-jwt-token-xyz-123';
-        onLoginSuccess(fakeToken); 
+        
+        login(fakeToken); // 1. Simpan token ke context
+        navigate('/dashboard'); // 2. ✅ PERBAIKAN: Gunakan string URL, bukan komponen
+        
       } else {
         setErrorMessage('Username atau password salah (Gunakan: admin / password123)');
         setSubmitting(false);
@@ -32,7 +39,6 @@ function LoginPage({ onLoginSuccess }) {
         {/* Logo dan Judul */}
         <div className="flex items-center gap-2 mb-8">
           <div className="w-8 h-8 bg-[#C6F25E] rounded-lg flex items-center justify-center">
-            {/* Ikon placeholder untuk logo Subur */}
             <svg className="w-5 h-5 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
@@ -63,9 +69,5 @@ function LoginPage({ onLoginSuccess }) {
     </div>
   );
 }
-
-LoginPage.propTypes = { 
-  onLoginSuccess: PropTypes.func.isRequired 
-};
 
 export default LoginPage;
