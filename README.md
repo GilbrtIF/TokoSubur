@@ -23,7 +23,7 @@ git config --global user.name "Nama Kamu"
 git config --global user.email "email@kamu.com"
 
 # Clone repository (pastikan kamu sudah diundang ke repo GitHub)
-git clone https://github.com/username-kamu/tokosubu.git
+git clone https://github.com/username-kamu/tokosubur.git
 cd tokosubu
 
 
