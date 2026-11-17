@@ -1,8 +1,8 @@
 import { Route, Routes, Navigate } from 'react-router-dom';
-import LoginPage from './pages/LoginPage'; 
-import DashboardPage from '../src/pages/Dashboard'; // Pastikan nama file ini benar
-import MainLayout from './components/layout/MainLayout'; 
-import { useAuth } from './hooks/useAuth'; // <-- IMPORT CUSTOM HOOK KITA
+import LoginPage from '../src/pages/LoginPage'; 
+import DashboardPage from '../src/pages/DashboardPage'; // Pastikan nama file ini benar
+import MainLayout from '../src/components/layout/MainLayout'; 
+import { useAuth } from '../src/hooks/useAuth'; // <-- IMPORT CUSTOM HOOK KITA
 
 function AppSubur() {
   // Ambil status login dari AuthContext
