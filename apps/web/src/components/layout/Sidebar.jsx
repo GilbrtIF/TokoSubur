@@ -10,6 +10,7 @@ import {
 import SidebarItem from '../sidebar/SidebarItem';
 import SidebarProfile from '../sidebar/SidebarProfile';
 
+
 function Sidebar() {
   const menuGroups = [
     {

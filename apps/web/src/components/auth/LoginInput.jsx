@@ -1,5 +1,5 @@
 import PropTypes from 'prop-types';
-import useInput from '../hooks/UseInput'; 
+import useInput from '../../hooks/useInput'; 
 
 function LoginInput({ onLogin, submitting }) {
   const [username, onUsernameChange] = useInput('');

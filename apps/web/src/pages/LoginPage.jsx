@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { loginService } from "../services/authService";
-import LoginInput from "../components/LoginInput";
+import LoginInput from "../components/auth/LoginInput";
 
 function LoginPage() {
   const { login } = useAuth();

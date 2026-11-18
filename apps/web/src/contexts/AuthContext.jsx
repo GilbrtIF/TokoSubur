@@ -9,7 +9,7 @@ export function AuthProvider({ children }) {
   // Tambahkan state untuk menyimpan data user
   const [user, setUser] = useState(() => {
     const savedUser = localStorage.getItem('userData');
-    return savedUser ? JSON.parse(savedUser) : null;
+    return savedUser ? JSON.parse(savedUser) : null;    
   });
 
   // Ubah parameter login agar menerima token dan data user

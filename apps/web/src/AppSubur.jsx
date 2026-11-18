@@ -3,6 +3,8 @@ import LoginPage from '../src/pages/LoginPage';
 import DashboardPage from '../src/pages/DashboardPage'; // Pastikan nama file ini benar
 import MainLayout from '../src/components/layout/MainLayout'; 
 import { useAuth } from '../src/hooks/useAuth'; // <-- IMPORT CUSTOM HOOK KITA
+import InventoryPage from '../src/pages/InventoryPage'; // Import halaman baru
+import StockHistoryPage from '../src/pages/StockHistoryPage';
 
 function AppSubur() {
   // Ambil status login dari AuthContext
@@ -26,6 +28,8 @@ function AppSubur() {
             path="/dashboard" 
             element={<DashboardPage />} 
           />
+          <Route path="/inventory" element={<InventoryPage />} />
+          <Route path="/inventory/history" element={<StockHistoryPage />} />
           {/* Tambahkan route lain di sini nantinya */}
         </Route>
       )}

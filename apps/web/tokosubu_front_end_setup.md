@@ -37,8 +37,13 @@ npm install lucide-react
 npm install recharts
 
 # 4. Library Styling (Tailwind CSS)
-npm install -D tailwindcss postcss autoprefixer
+npm install -D tailwindcss @tailwindcss/vite
 npx tailwindcss init -p
+
+#5. Icon 
+npm install react-icons
+npm install lucide-react  
+
 ```
 
 ---
