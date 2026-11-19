@@ -39,6 +39,9 @@ npm install multer xlsx csv-parser
 # - nodemon: Restart server otomatis saat ada perubahan kode
 npm install -D nodemon
 
+# 6. Dependencies Utama (Dibutuhkan saat aplikasi berjalan)
+# - dotenv: Memuat variabel environment (seperti DATABASE_URL, PORT, JWT_SECRET) dari file .env ke dalam process.env agar kredensial aman dan tidak hardcode di kode.
+npm install dotenv
 
 Buka package.json, lalu ubah bagian "scripts" menjadi:
 
@@ -57,11 +60,12 @@ PORT=3000
 NODE_ENV=development
 
 # Database (Dapatkan dari Supabase / Neon)
+DATABASE_URL=postgres://adminu:admin123@localhost:5432/tokosubur
 DB_HOST=localhost
 DB_PORT=5432
 DB_USER=postgres
 DB_PASSWORD=password_kamu
-DB_NAME=tokosubu
+DB_NAME=tokosubur
 
 # JWT
 JWT_SECRET=rahasia_super_aman_tokosubu
