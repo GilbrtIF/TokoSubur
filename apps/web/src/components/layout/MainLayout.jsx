@@ -1,16 +1,29 @@
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
+import MobileHeader from './MobileHeader';
+import BottomNav from './BottomNav';
 
 function MainLayout() {
   return (
     <div className="min-h-screen bg-[#FAF9F6]">
-      {/* Sidebar Fixed di Kiri */}
-      <Sidebar />
       
-      {/* Konten Utama dengan Margin Kiri selebar Sidebar (w-64 = 16rem) */}
-      <main className="ml-64 p-8 h-screen overflow-y-auto">
-        <Outlet /> {/* DashboardPage akan muncul di sini */}
+      {/* 1. SIDEBAR (Hanya Desktop) */}
+      <div className="hidden md:block fixed left-0 top-0 h-screen w-64 z-40">
+        <Sidebar />
+      </div>
+
+      {/* 2. HEADER MOBILE (Hanya Mobile) */}
+      <MobileHeader />
+
+      {/* 3. KONTEN UTAMA */}
+      {/* pt-16 (padding top untuk mobile header) & pb-24 (padding bottom untuk bottom nav) */}
+      {/* md:ml-64 (margin kiri untuk desktop) & md:pt-8 md:pb-8 */}
+      <main className="pt-20 pb-24 px-4 md:ml-64 md:pt-8 md:pb-8 md:px-8 h-screen overflow-y-auto">
+        <Outlet />
       </main>
+
+      {/* 4. BOTTOM NAV (Hanya Mobile) */}
+      <BottomNav />
     </div>
   );
 }

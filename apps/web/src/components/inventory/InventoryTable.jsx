@@ -3,19 +3,19 @@ import PropTypes from 'prop-types';
 
 // Terima prop 'data' dari parent
 function InventoryTable({ data }) {
-  // Jika hasil pencarian/filter kosong
   if (data.length === 0) {
     return (
-      <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center shadow-[0_2px_10px_rgb(0,0,0,0.02)]">
-        <p className="text-gray-500 font-medium">Tidak ada produk yang cocok dengan kriteria Anda.</p>
-        <p className="text-sm text-gray-400 mt-1">Coba ubah kata kunci atau filter status.</p>
+      <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center">
+        <p className="text-gray-500 font-medium">Tidak ada produk yang cocok.</p>
       </div>
     );
   }
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-[0_2px_10px_rgb(0,0,0,0.02)] overflow-hidden">
-      <div className="overflow-x-auto">
+      
+      {/* ✅ 1. TAMPILAN DESKTOP (Tabel) - Hanya muncul di layar md ke atas */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-left text-sm text-gray-600">
           <thead className="bg-[#FAF9F6] text-xs uppercase text-gray-400 font-semibold border-b border-gray-100">
             <tr>
@@ -29,7 +29,6 @@ function InventoryTable({ data }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
-            {/* Map dari 'data' prop, bukan dari import */}
             {data.map((item) => (
               <tr key={item.id} className="hover:bg-gray-50/50">
                 <td className="px-6 py-4">
@@ -50,6 +49,51 @@ function InventoryTable({ data }) {
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* ✅ 2. TAMPILAN MOBILE (Card List) - Hanya muncul di layar kecil */}
+      <div className="md:hidden flex flex-col divide-y divide-gray-100">
+        {data.map((item) => (
+          <div key={item.id} className="p-4 flex flex-col gap-3">
+            {/* Header Card: Nama & Status */}
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="font-bold text-gray-900 text-sm">{item.name}</p>
+                <p className="text-[10px] text-gray-400 uppercase tracking-wider">{item.id}</p>
+              </div>
+              <StatusBadge status={item.status} />
+            </div>
+
+            {/* Body Card: Grid Data */}
+            <div className="grid grid-cols-4 gap-2 mt-1">
+              <div>
+                <p className="text-[10px] text-gray-400">Stok Sistem</p>
+                <p className="text-xs font-semibold text-gray-800">{item.systemStock}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-gray-400">Safety Stock</p>
+                <p className="text-xs font-semibold text-gray-800">{item.safetyStock}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-gray-400">Stok Fisik</p>
+                <p className="text-xs font-semibold text-gray-800">{item.physicalStock}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-gray-400">Selisih</p>
+                <p className={`text-xs font-semibold ${item.diff < 0 ? 'text-red-500' : 'text-gray-800'}`}>
+                  {item.diff}
+                </p>
+              </div>
+            </div>
+
+            {/* Footer Card: Stok Cukup */}
+            <div className="mt-1 bg-gray-50 px-2 py-1.5 rounded-md w-max">
+              <p className="text-[10px] text-gray-500">
+                Stok Cukup: <span className="font-semibold text-gray-800">{item.daysLeft} hari</span>
+              </p>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

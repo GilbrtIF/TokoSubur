@@ -74,7 +74,6 @@ function LoginPage() {
             <span><strong>istri</strong> / istri123 (Co-Owner)</span>
           </div>
         </div>
-
       </div>
     </div>
   );
