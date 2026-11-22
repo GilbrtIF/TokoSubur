@@ -3,6 +3,9 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const pool = require('../config/db');
+const authController = require('../controllers/authController');
+
+router.post('/authentications', authController.login);
 
 // POST /authentications
 router.post('/authentications', async (req, res) => {
