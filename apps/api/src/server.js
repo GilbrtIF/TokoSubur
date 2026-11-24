@@ -1,9 +1,6 @@
-// apps/api/server.js
-require('dotenv').config();
-const app = require('./app'); // ✅ Gunakan './app'
+const app = require('./app');
+const { port } = require('./config/env');
 
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, () => {
-  console.log(`🚀 Server berjalan di http://localhost:${PORT}`);
+app.listen(port, () => {
+  console.log(`Tokosubur API berjalan pada port ${port}`);
 });

@@ -1,18 +1,26 @@
-// apps/api/app.js
-require('dotenv').config();
+
+// apps/api/src/app.js
+// Load environment configuration sebelum mengimpor routes
+require('./config/env');
+
 const express = require('express');
 const cors = require('cors');
-const authRoutes = require('./routes/auth'); // ✅ Import dari folder src
+const authRoutes = require('./routes/auth');
 
 const app = express();
 
+// Global middleware
 app.use(cors());
 app.use(express.json());
 
-app.use('/api', authRoutes); // ✅ Gunakan prefix /api agar rapi
+// API Routes
+app.use('/api', authRoutes);
 
+// Health check
 app.get('/', (req, res) => {
-  res.send('API Toko Subur Berjalan!');
+  res.status(200).json({
+    message: 'API Toko Subur berjalan',
+  });
 });
 
 module.exports = app;

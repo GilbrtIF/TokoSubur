@@ -1,26 +1,99 @@
-// apps/api/src/services/authService.js
-const pool = require('../config/db'); // ✅ Import dari config
+
+/**
+ * Authentication Service
+ * Bertanggung jawab atas business logic autentikasi.
+ */
+
+const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
+const userRepository = require('../repositories/userRepository');
+
+const {
+  jwtSecret,
+  jwtExpiresIn,
+} = require('../config/env');
+
+/**
+ * Membuat error autentikasi.
+ *
+ * @returns {Error}
+ */
+const createUnauthorizedError = () => {
+  const error = new Error('Username atau password salah');
+  error.statusCode = 401;
+
+  return error;
+};
+
+/**
+ * Login pengguna.
+ *
+ * @param {string} username
+ * @param {string} password
+ * @returns {Promise<Object>}
+ */
 const login = async (username, password) => {
-  const result = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
-  const user = result.rows[0];
+  // 1. Cari pengguna berdasarkan username
+  const user = await userRepository.findByUsername(username);
 
-  if (!user) throw new Error('Username atau password salah');
+  if (!user) {
+    throw createUnauthorizedError();
+  }
 
-  const isValidPassword = password === user.password_hash;
-  if (!isValidPassword) throw new Error('Username atau password salah');
+  // 2. Pastikan password tersimpan dalam format bcrypt
+  // Tidak memperbolehkan perbandingan plaintext.
+  const isBcryptHash =
+    typeof user.password_hash === 'string' &&
+    /^\$2[aby]\$\d{2}\$/.test(user.password_hash);
 
-  const token = jwt.sign(
-    { id: user.id, role: user.role },
-    process.env.JWT_SECRET,
-    { expiresIn: '1d' }
+  if (!isBcryptHash) {
+    const error = new Error(
+      'Password pengguna belum dikonversi ke format bcrypt.',
+    );
+
+    error.code = 'PASSWORD_HASH_NOT_BCRYPT';
+
+    throw error;
+  }
+
+  // 3. Verifikasi password
+  const isPasswordValid = await bcrypt.compare(
+    password,
+    user.password_hash,
   );
 
+  if (!isPasswordValid) {
+    throw createUnauthorizedError();
+  }
+
+  // 4. Buat payload JWT
+  const payload = {
+    id: user.id,
+    role: user.role,
+  };
+
+  // 5. Generate access token
+  const accessToken = jwt.sign(
+    payload,
+    jwtSecret,
+    {
+      expiresIn: jwtExpiresIn,
+    },
+  );
+
+  // 6. Kembalikan data pengguna
   return {
-    accessToken: token,
-    user: { id: user.id, username: user.username, name: user.name, role: user.role }
+    accessToken,
+    user: {
+      id: user.id,
+      username: user.username,
+      name: user.name,
+      role: user.role,
+    },
   };
 };
 
-module.exports = { login };
+module.exports = {
+  login,
+};

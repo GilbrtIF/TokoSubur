@@ -1,14 +1,15 @@
-// apps/api/src/db.js
+// apps/api/src/config/db.js
+
 const { Pool } = require('pg');
-require('dotenv').config();
+const { databaseUrl } = require('./env');
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: databaseUrl,
 });
 
-// Tes koneksi saat server dinyalakan (Opsional)
-pool.connect()
-  .then(() => console.log('✅ Terhubung ke database PostgreSQL'))
-  .catch((err) => console.error('❌ Gagal terhubung ke database', err.stack));
+// Menangani error pada koneksi idle di dalam pool.
+pool.on('error', (error) => {
+  console.error('Unexpected PostgreSQL pool error:', error.message);
+});
 
-module.exports = pool;  
+module.exports = pool;
