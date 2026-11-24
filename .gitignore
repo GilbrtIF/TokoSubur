@@ -65,3 +65,15 @@ logs/
 
 data/*
 !data/.gitkeep
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Legacy backend
+/apps/api_/
+/apps/api_.zip
