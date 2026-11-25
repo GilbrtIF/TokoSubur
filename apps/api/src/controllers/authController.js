@@ -1,4 +1,3 @@
-
 /**
  * Authentication Controller
  * Bertanggung jawab menangani HTTP request dan response.
@@ -30,17 +29,13 @@ const login = async (req, res) => {
     }
 
     // 3. Panggil authentication service
-    const data = await authService.login(
-      username.trim(),
-      password,
-    );
+    const data = await authService.login(username.trim(), password);
 
     // 4. Kirim response sukses
     return res.status(200).json({
       status: 'success',
       data,
     });
-
   } catch (error) {
     // 5. Kesalahan kredensial
     if (error.statusCode === 401) {

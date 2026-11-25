@@ -1,4 +1,3 @@
-
 /**
  * Authentication Service
  * Bertanggung jawab atas business logic autentikasi.
@@ -9,10 +8,7 @@ const jwt = require('jsonwebtoken');
 
 const userRepository = require('../repositories/userRepository');
 
-const {
-  jwtSecret,
-  jwtExpiresIn,
-} = require('../config/env');
+const { jwtSecret, jwtExpiresIn } = require('../config/env');
 
 /**
  * Membuat error autentikasi.
@@ -49,7 +45,7 @@ const login = async (username, password) => {
 
   if (!isBcryptHash) {
     const error = new Error(
-      'Password pengguna belum dikonversi ke format bcrypt.',
+      'Password pengguna belum dikonversi ke format bcrypt.'
     );
 
     error.code = 'PASSWORD_HASH_NOT_BCRYPT';
@@ -58,10 +54,7 @@ const login = async (username, password) => {
   }
 
   // 3. Verifikasi password
-  const isPasswordValid = await bcrypt.compare(
-    password,
-    user.password_hash,
-  );
+  const isPasswordValid = await bcrypt.compare(password, user.password_hash);
 
   if (!isPasswordValid) {
     throw createUnauthorizedError();
@@ -74,13 +67,9 @@ const login = async (username, password) => {
   };
 
   // 5. Generate access token
-  const accessToken = jwt.sign(
-    payload,
-    jwtSecret,
-    {
-      expiresIn: jwtExpiresIn,
-    },
-  );
+  const accessToken = jwt.sign(payload, jwtSecret, {
+    expiresIn: jwtExpiresIn,
+  });
 
   // 6. Kembalikan data pengguna
   return {

@@ -2,18 +2,15 @@
 
 require('dotenv').config();
 
-const requiredVariables = [
-  'DATABASE_URL',
-  'JWT_SECRET',
-];
+const requiredVariables = ['DATABASE_URL', 'JWT_SECRET'];
 
 const missingVariables = requiredVariables.filter(
-  (variable) => !process.env[variable],
+  (variable) => !process.env[variable]
 );
 
 if (missingVariables.length > 0) {
   throw new Error(
-    `Environment variables belum dikonfigurasi: ${missingVariables.join(', ')}`,
+    `Environment variables belum dikonfigurasi: ${missingVariables.join(', ')}`
   );
 }
 
