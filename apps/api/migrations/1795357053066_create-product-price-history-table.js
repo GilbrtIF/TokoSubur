@@ -1,26 +1,28 @@
-/**
- * @type {import('node-pg-migrate').ColumnDefinitions | undefined}
- */
-export const shorthands = undefined;
+'use strict';
 
-/**
- * @param pgm {import('node-pg-migrate').MigrationBuilder}
- * @param run {() => void | undefined}
- * @returns {Promise<void> | void}
- */
 exports.up = (pgm) => {
   pgm.createTable('product_price_history', {
-    id: { type: 'serial', primaryKey: true },
-    product_id: { type: 'integer', references: 'products', onDelete: 'CASCADE', notNull: true },
-    cost_price: { type: 'numeric(12,2)', notNull: true }, // Harga modal
-    sell_price: { type: 'numeric(12,2)', notNull: true }, // Harga jual
-    valid_from: { type: 'timestamp', notNull: true, default: pgm.func('current_timestamp') },
-    valid_to: { type: 'timestamp' }, // NULL jika masih berlaku (harga saat ini)
+    price_id: { type: 'serial', primaryKey: true },
+    product_id: {
+      type: 'integer',
+      notNull: true,
+      references: '"products"(product_id)',
+    },
+    valid_from: { type: 'date', notNull: true },
+    valid_to: { type: 'date' },
+    purchase_cost: { type: 'numeric(14,2)', notNull: true },
+    packing_cost: { type: 'numeric(14,2)', notNull: true },
+    cogs: { type: 'numeric(14,2)', notNull: true },
+    online_price: { type: 'numeric(14,2)' },
+    offline_price: { type: 'numeric(14,2)' },
+  });
+
+  pgm.createIndex('product_price_history', ['product_id', 'valid_from'], {
+    name: 'ux_product_price_history_product_id_valid_from',
+    unique: true,
   });
 };
-/**
- * @param pgm {import('node-pg-migrate').MigrationBuilder}
- * @param run {() => void | undefined}
- * @returns {Promise<void> | void}
- */
-exports.down = (pgm) => { pgm.dropTable('product_price_history'); };
+
+exports.down = (pgm) => {
+  pgm.dropTable('product_price_history');
+};

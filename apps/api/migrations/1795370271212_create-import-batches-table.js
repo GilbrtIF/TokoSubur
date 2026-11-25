@@ -1,34 +1,41 @@
-/**
- * @type {import('node-pg-migrate').ColumnDefinitions | undefined}
- */
-export const shorthands = undefined;
+'use strict';
 
-/**
- * @param pgm {import('node-pg-migrate').MigrationBuilder}
- * @param run {() => void | undefined}
- * @returns {Promise<void> | void}
- */
 exports.up = (pgm) => {
   pgm.createTable('import_batches', {
-    id: { type: 'serial', primaryKey: true },
-    channel_id: { 
-      type: 'integer', 
-      references: 'channels', 
-      onDelete: 'SET NULL' 
+    batch_id: { type: 'serial', primaryKey: true },
+    import_type: { type: 'varchar(20)', notNull: true },
+    channel_id: {
+      type: 'integer',
+      references: '"channels"(channel_id)',
     },
-    file_name: { type: 'varchar(255)', notNull: true },
-    total_rows: { type: 'integer', default: 0 },
-    duplicate_rows: { type: 'integer', default: 0 },
-    error_rows: { type: 'integer', default: 0 },
-    // Tanggal batas data lengkap (untuk training AI)
+    file_name: { type: 'varchar(200)', notNull: true },
+    period_start: { type: 'date', notNull: true },
+    period_end: { type: 'date', notNull: true },
     data_complete_until: { type: 'date' },
-    created_at: { type: 'timestamp', default: pgm.func('current_timestamp') },
-    is_dummy: { type: 'boolean', default: false },
+    rows_total: { type: 'integer', notNull: true, default: 0 },
+    rows_new: { type: 'integer', notNull: true, default: 0 },
+    rows_duplicate: { type: 'integer', notNull: true, default: 0 },
+    rows_error: { type: 'integer', notNull: true, default: 0 },
+    rows_unmapped: { type: 'integer', notNull: true, default: 0 },
+    status: { type: 'varchar(12)', notNull: true },
+    imported_by: { type: 'varchar(60)' },
+    imported_at: {
+      type: 'timestamp',
+      notNull: true,
+      default: pgm.func('CURRENT_TIMESTAMP'),
+    },
+  });
+
+  pgm.addConstraint('import_batches', 'chk_import_batches_import_type', {
+    check:
+      "import_type IN ('SALES_OFFLINE','SALES_ONLINE','STOCK_MOVEMENT','REPACK','OPNAME','MARKETPLACE_METRICS')",
+  });
+
+  pgm.addConstraint('import_batches', 'chk_import_batches_status', {
+    check: "status IN ('PREVIEW','CONFIRMED','ROLLED_BACK')",
   });
 };
-/**
- * @param pgm {import('node-pg-migrate').MigrationBuilder}
- * @param run {() => void | undefined}
- * @returns {Promise<void> | void}
- */
-exports.down = (pgm) => { pgm.dropTable('import_batches'); };
+
+exports.down = (pgm) => {
+  pgm.dropTable('import_batches');
+};

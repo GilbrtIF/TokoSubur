@@ -1,26 +1,17 @@
-/**
- * @type {import('node-pg-migrate').ColumnDefinitions | undefined}
- */
-export const shorthands = undefined;
+'use strict';
 
-/**
- * @param pgm {import('node-pg-migrate').MigrationBuilder}
- * @param run {() => void | undefined}
- * @returns {Promise<void> | void}
- */
 exports.up = (pgm) => {
   pgm.createTable('suppliers', {
-    id: { type: 'serial', primaryKey: true },
-    name: { type: 'varchar(100)', notNull: true },
-    contact: { type: 'varchar(50)' },
-    is_dummy: { type: 'boolean', default: true }, // Penanda data dummy
-    created_at: { type: 'timestamp', default: pgm.func('current_timestamp') },
+    supplier_id: { type: 'serial', primaryKey: true },
+    supplier_code: { type: 'varchar(10)', notNull: true, unique: true },
+    supplier_name: { type: 'varchar(80)', notNull: true },
+    product_group: { type: 'varchar(60)' },
+    lead_time_days: { type: 'integer' },
+    lead_time_source: { type: 'varchar(20)', notNull: true, default: 'ASUMSI' },
+    is_dummy: { type: 'boolean', notNull: true, default: true },
   });
 };
 
-/**
- * @param pgm {import('node-pg-migrate').MigrationBuilder}
- * @param run {() => void | undefined}
- * @returns {Promise<void> | void}
- */
-exports.down = (pgm) => { pgm.dropTable('suppliers'); };
+exports.down = (pgm) => {
+  pgm.dropTable('suppliers');
+};

@@ -1,34 +1,38 @@
-/**
- * @type {import('node-pg-migrate').ColumnDefinitions | undefined}
- */
-export const shorthands = undefined;
+'use strict';
 
-/**
- * @param pgm {import('node-pg-migrate').MigrationBuilder}
- * @param run {() => void | undefined}
- * @returns {Promise<void> | void}
- */
 exports.up = (pgm) => {
   pgm.createTable('product_mapping', {
-    id: { type: 'serial', primaryKey: true },
-    raw_name: { type: 'varchar(255)', notNull: true, unique: true }, // Nama produk di file mentah (misal: "Urea 50kg Subsidi")
-    product_id: { 
-      type: 'integer', 
-      references: 'products', 
-      onDelete: 'CASCADE', 
-      notNull: true 
-    }, // SKU internal kita (misal: PUP-URE-001)
-    channel_id: { 
-      type: 'integer', 
-      references: 'channels', 
-      onDelete: 'SET NULL' 
-    }, // Opsional: Mapping khusus untuk channel tertentu
+    mapping_id: { type: 'serial', primaryKey: true },
+    channel_id: {
+      type: 'integer',
+      references: '"channels"(channel_id)',
+    },
+    source_name_norm: { type: 'varchar(200)', notNull: true },
+    source_sku: { type: 'varchar(40)' },
+    product_id: {
+      type: 'integer',
+      notNull: true,
+      references: '"products"(product_id)',
+    },
+    match_method: { type: 'varchar(10)', notNull: true },
+    confidence_score: { type: 'numeric(4,3)' },
+    confirmed_by: { type: 'varchar(60)' },
+    created_at: {
+      type: 'timestamp',
+      notNull: true,
+      default: pgm.func('CURRENT_TIMESTAMP'),
+    },
   });
+
+  pgm.addConstraint('product_mapping', 'chk_product_mapping_match_method', {
+    check: "match_method IN ('EXACT','FUZZY','MANUAL')",
+  });
+
+  pgm.sql(
+    'CREATE UNIQUE INDEX ux_product_mapping_channel_id_source_name_norm ON product_mapping (COALESCE(channel_id, 0), source_name_norm);'
+  );
 };
 
-/**
- * @param pgm {import('node-pg-migrate').MigrationBuilder}
- * @param run {() => void | undefined}
- * @returns {Promise<void> | void}
- */
-exports.down = (pgm) => { pgm.dropTable('product_mapping'); };
+exports.down = (pgm) => {
+  pgm.dropTable('product_mapping');
+};

@@ -1,32 +1,26 @@
-/**
- * @type {import('node-pg-migrate').ColumnDefinitions | undefined}
- */
-export const shorthands = undefined;
+'use strict';
 
-/**
- * @param pgm {import('node-pg-migrate').MigrationBuilder}
- * @param run {() => void | undefined}
- * @returns {Promise<void> | void}
- */
 exports.up = (pgm) => {
   pgm.createTable('products', {
-    id: { type: 'serial', primaryKey: true },
-    parent_id: { 
-      type: 'integer', 
-      references: 'product_parents', 
-      onDelete: 'CASCADE' 
+    product_id: { type: 'serial', primaryKey: true },
+    sku_code: { type: 'varchar(30)', notNull: true, unique: true },
+    product_name: { type: 'varchar(150)', notNull: true },
+    category: { type: 'varchar(30)', notNull: true },
+    parent_id: {
+      type: 'integer',
+      references: '"product_parents"(parent_id)',
     },
-    sku: { type: 'varchar(50)', notNull: true, unique: true }, // Kode unik internal, e.g., PUP-URE-001
-    name: { type: 'varchar(150)', notNull: true }, // Nama jual, e.g., 'Pupuk Urea 50 kg'
-    base_qty_per_unit: { type: 'numeric(10,2)', default: 1 }, // 1 karung = 50 kg, maka isi 50
-    is_bundle: { type: 'boolean', default: false }, // true jika ini paket (tidak punya stok sendiri)
-    track_stock: { type: 'boolean', default: true }, // false untuk SKU EXTRAPCKG (kardus)
-    is_dummy: { type: 'boolean', default: true },
+    base_qty_per_unit: { type: 'numeric(10,4)' },
+    is_bundle: { type: 'boolean', notNull: true, default: false },
+    track_stock: { type: 'boolean', notNull: true, default: true },
+    sold_offline: { type: 'boolean', notNull: true },
+    sold_online: { type: 'boolean', notNull: true },
+    is_active: { type: 'boolean', notNull: true, default: true },
+    price_source: { type: 'varchar(10)', notNull: true },
+    is_dummy: { type: 'boolean', notNull: true, default: true },
   });
 };
-/**
- * @param pgm {import('node-pg-migrate').MigrationBuilder}
- * @param run {() => void | undefined}
- * @returns {Promise<void> | void}
- */
-exports.down = (pgm) => { pgm.dropTable('products'); };
+
+exports.down = (pgm) => {
+  pgm.dropTable('products');
+};

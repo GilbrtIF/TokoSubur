@@ -1,7 +1,6 @@
 /* eslint-disable camelcase */
 
 exports.up = (pgm) => {
-  // 1. Buat struktur tabel users
   pgm.createTable('users', {
     id: {
       type: 'serial',
@@ -37,7 +36,6 @@ exports.up = (pgm) => {
     },
   });
 
-  // 2. Masukkan data awal (Seed Data)
   pgm.sql(`
     INSERT INTO users (username, password_hash, name, role) VALUES 
     ('admin', 'password123', 'Administrator Sistem', 'admin'),
@@ -47,6 +45,5 @@ exports.up = (pgm) => {
 };
 
 exports.down = (pgm) => {
-  // Hapus tabel jika migrasi di-rollback
   pgm.dropTable('users');
 };

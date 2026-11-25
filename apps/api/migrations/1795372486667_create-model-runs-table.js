@@ -1,26 +1,22 @@
-/**
- * @type {import('node-pg-migrate').ColumnDefinitions | undefined}
- */
-export const shorthands = undefined;
+'use strict';
 
-/**
- * @param pgm {import('node-pg-migrate').MigrationBuilder}
- * @param run {() => void | undefined}
- * @returns {Promise<void> | void}
- */
 exports.up = (pgm) => {
   pgm.createTable('model_runs', {
-    id: { type: 'serial', primaryKey: true },
-    model_name: { type: 'varchar(100)', notNull: true }, // e.g., 'Prophet', 'XGBoost'
-    version: { type: 'varchar(50)', notNull: true },
-    is_active: { type: 'boolean', default: false }, // Hanya 1 yang aktif
-    metrics: { type: 'jsonb' }, // Simpan MAE, RMSE, dll dalam JSON
-    trained_at: { type: 'timestamp', default: pgm.func('current_timestamp') },
+    run_id: { type: 'serial', primaryKey: true },
+    model_name: { type: 'varchar(40)', notNull: true },
+    model_version: { type: 'varchar(20)', notNull: true },
+    trained_at: { type: 'timestamp', notNull: true },
+    train_start: { type: 'date', notNull: true },
+    train_end: { type: 'date', notNull: true },
+    test_start: { type: 'date', notNull: true },
+    test_end: { type: 'date', notNull: true },
+    mape: { type: 'numeric(8,4)' },
+    rmse: { type: 'numeric(12,4)' },
+    wape: { type: 'numeric(8,4)' },
+    is_active: { type: 'boolean', notNull: true, default: false },
   });
 };
-/**
- * @param pgm {import('node-pg-migrate').MigrationBuilder}
- * @param run {() => void | undefined}
- * @returns {Promise<void> | void}
- */
-exports.down = (pgm) => { pgm.dropTable('model_runs'); };
+
+exports.down = (pgm) => {
+  pgm.dropTable('model_runs');
+};

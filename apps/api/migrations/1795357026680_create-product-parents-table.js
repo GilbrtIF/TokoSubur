@@ -1,25 +1,26 @@
-/**
- * @type {import('node-pg-migrate').ColumnDefinitions | undefined}
- */
-export const shorthands = undefined;
+'use strict';
 
-/**
- * @param pgm {import('node-pg-migrate').MigrationBuilder}
- * @param run {() => void | undefined}
- * @returns {Promise<void> | void}
- */
 exports.up = (pgm) => {
   pgm.createTable('product_parents', {
-    id: { type: 'serial', primaryKey: true },
-    name: { type: 'varchar(100)', notNull: true }, // e.g., 'Pupuk Urea', 'Benih Padi'
-    base_unit: { type: 'varchar(10)', notNull: true }, // 'kg' atau 'pcs'
-    is_repacked: { type: 'boolean', default: false }, // true jika dijual eceran per kg
-    is_dummy: { type: 'boolean', default: true },
+    parent_id: { type: 'serial', primaryKey: true },
+    parent_key: { type: 'varchar(40)', notNull: true, unique: true },
+    parent_name: { type: 'varchar(120)', notNull: true },
+    base_unit: { type: 'varchar(5)', notNull: true },
+    is_repacked: { type: 'boolean', notNull: true },
+    purchase_unit: { type: 'varchar(10)', notNull: true },
+    base_units_per_purchase: { type: 'numeric(10,2)', notNull: true },
+    supplier_id: {
+      type: 'integer',
+      notNull: true,
+      references: '"suppliers"(supplier_id)',
+    },
+  });
+
+  pgm.addConstraint('product_parents', 'chk_product_parents_base_unit', {
+    check: "base_unit IN ('kg','pcs')",
   });
 };
-/**
- * @param pgm {import('node-pg-migrate').MigrationBuilder}
- * @param run {() => void | undefined}
- * @returns {Promise<void> | void}
- */
-exports.down = (pgm) => { pgm.dropTable('product_parents'); };
+
+exports.down = (pgm) => {
+  pgm.dropTable('product_parents');
+};
