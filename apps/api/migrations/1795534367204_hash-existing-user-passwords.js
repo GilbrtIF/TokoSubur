@@ -1,4 +1,3 @@
-
 /**
  * Hash Existing User Passwords
  *
@@ -28,10 +27,7 @@ exports.up = async (pgm) => {
     }
 
     // 3. Hash password menggunakan bcrypt
-    const hashedPassword = await bcrypt.hash(
-      user.password_hash,
-      12,
-    );
+    const hashedPassword = await bcrypt.hash(user.password_hash, 12);
 
     // 4. Update password_hash di database
     const updateResult = await pgm.db.query(
@@ -43,18 +39,12 @@ exports.up = async (pgm) => {
         WHERE id = $2
           AND password_hash = $3
       `,
-      [
-        hashedPassword,
-        user.id,
-        user.password_hash,
-      ],
+      [hashedPassword, user.id, user.password_hash]
     );
 
     // Pastikan data berhasil diperbarui
     if (updateResult.rowCount !== 1) {
-      throw new Error(
-        `Gagal memperbarui password user ID ${user.id}`,
-      );
+      throw new Error(`Gagal memperbarui password user ID ${user.id}`);
     }
   }
 };
