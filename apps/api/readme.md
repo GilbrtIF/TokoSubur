@@ -2,7 +2,7 @@
 
 Backend service untuk aplikasi pengelolaan persediaan, transaksi penjualan, analisis bisnis, dan integrasi AI pada Toko Subur (SuburOnline).
 
-Dokumentasi ini ditujukan khusus untuk tim Backend Developer agar setiap anggota tim dapat menyiapkan database **Skema v4 (Dataset v7)**, memuat data hasil _wrangling_, menjalankan pengujian API, dan memelihara layanan secara mandiri.
+Dokumentasi ini ditujukan khusus untuk tim Backend Developer agar setiap anggota tim dapat menyiapkan database **Skema v4 Final (Dataset v7 + 11 View Operasional & Analitik)**, memuat data hasil _wrangling_, menjalankan pengujian API, dan mengembangkan fitur secara paralel tanpa konflik.
 
 ## 1. Tech Stack
 
@@ -38,7 +38,7 @@ Struktur direktori Backend API:
 
 ```text
 apps/api/
-├── migrations/                  # 23 file migrasi individual (auth, 20 tabel v4, 3 view dasar)
+├── migrations/                  # 27 file migrasi individual (auth, 20 tabel v4, 11 view, & seed reorder)
 ├── postman/                     # Koleksi dan environment pengujian Postman
 │   ├── SuburOnline-API.postman_collection.json
 │   └── SuburOnline-Local.postman_environment.json
@@ -69,11 +69,11 @@ apps/api/
 
 - **Routes:** Memetakan URL dan HTTP method ke controller.
 - **Controllers:** Menangani request dan response HTTP.
-- **Services:** Menjalankan business logic dan konversi tipe data.
+- **Services:** Menjalankan business logic, transaksi atomik, dan konversi tipe data.
 - **Repositories:** Menangani query SQL terparameterisasi dan akses database.
 - **Validators:** Memvalidasi query parameter dan payload dari client.
-- **Middleware:** Menangani autentikasi, authorization, upload, dan centralized error handling.
-- **Integrations:** Menghubungkan backend dengan ML Service atau layanan eksternal.
+- **Middleware:** Menangani autentikasi JWT, authorization role, upload file, dan centralized error handling.
+- **Integrations:** Menghubungkan backend dengan Python ML/AI Service atau layanan eksternal.
 - **App.js:** Merakit konfigurasi Express tanpa menjalankan server.
 - **Server.js:** Menjalankan HTTP server dan melakukan listen pada port.
 
@@ -121,7 +121,7 @@ Buka file `.env` dan sesuaikan konfigurasi dengan lingkungan lokal masing-masing
 | MIGRATION_DATABASE_URL | PostgreSQL connection string khusus migrasi (role pemilik `adminu`) | postgres://adminu:password@localhost:5432/tokosubur          |
 | JWT_SECRET             | Secret untuk signing JWT                                            | Local secret                                                 |
 | JWT_EXPIRES_IN         | Token expiration                                                    | 1d                                                           |
-| ML_SERVICE_URL         | ML Service base URL                                                 | http://localhost:8000                                        |
+| ML_SERVICE_URL         | ML/AI Service base URL                                              | http://localhost:8000                                        |
 
 **Security Rules:**
 
@@ -130,7 +130,7 @@ Buka file `.env` dan sesuaikan konfigurasi dengan lingkungan lokal masing-masing
 - Jangan menggunakan JWT secret contoh untuk production.
 - Gunakan `.env.example` sebagai template tanpa credential asli.
 
-## 6. Database Setup & Role Separation (Skema v4 / Dataset v7)
+## 6. Database Setup & Role Separation (Skema v4 Final / Dataset v7)
 
 Pastikan PostgreSQL sudah berjalan, lalu buat role pemilik migrasi (`adminu`), role runtime aplikasi (`tokosubur_app`), dan database `tokosubur` sebagai superuser (`psql -U postgres`):
 
@@ -148,31 +148,52 @@ ALTER SCHEMA public OWNER TO adminu;
 GRANT ALL ON SCHEMA public TO adminu;
 ```
 
-### Asumsi & Aturan Desain Database (Skema v4)
+### Asumsi & Aturan Desain Database (Skema v4 Final)
 
 - **Tiga User Tetap:** Sistem menggunakan 3 akun awal yang di-seed otomatis oleh migrasi dengan password ter-hash (`bcrypt`): `admin` (`admin`), `fauzi` (`owner`), dan `istri` (`co-owner`).
-- **Struktur 20 Tabel & 3 View Dasar:** Seluruh nama tabel dan kolom memakai bahasa Indonesia `snake_case` yang identik dengan CSV hasil _wrangling_ dan menggunakan kunci teks alami (`sku`, `kanal`, `supplier_code`, `transaction_id`, `item_id`).
-- **Satu Tingkat Stok (190 SKU):** Tabel terpisah `product_parents` dan `repack_events` sudah dihapus. Empat induk karung 50 kg (`UREA50KG`, `KCL50KG`, `DLMT50KG`, `FRTPHS50KG`) disimpan langsung di `products` dengan `is_sellable = false` dan `satuan_stok = 'kg'`, bersama 186 SKU produk jual.
-- **Tabel Stok & Harga Bersifat Append-Only:** `stock_movements`, `stock_opname`, dan `product_price_history` hanya menerima penambahan baris baru tanpa mengubah atau menghapus histori (`REVOKE UPDATE, DELETE` untuk `tokosubur_app`). Saldo stok terkini dihitung dari `COALESCE(SUM(qty), 0)` pada view `v_stok_saat_ini`.
-- **11 Jenis Pergerakan Stok (`stock_movement_types`):** `OPENING`, `RESTOCK_IN`, `RETURN_IN`, `DAMAGED_OUT`, `SPLIT_OUT`, `SPLIT_IN`, `ASSEMBLE_OUT`, `ASSEMBLE_IN`, `SALE_OFFLINE`, `SALE_ONLINE`, dan `ADJUSTMENT`. Pemecahan barang (`SPLIT_OUT` + `SPLIT_IN`) dan perakitan paket (`ASSEMBLE_OUT` + `ASSEMBLE_IN`) dicatat berpasangan dalam satu transaksi atomik.
+- **Struktur 20 Tabel + `users` & 11 View:** Seluruh nama tabel dan kolom memakai bahasa Indonesia `snake_case` yang identik dengan CSV hasil _wrangling_ serta menggunakan kunci teks alami (`sku`, `kanal`, `supplier_code`, `transaction_id`, `item_id`).
+  - **3 View Dasar:** `v_stok_saat_ini`, `v_penjualan_harian`, `v_harga_terbaru`.
+  - **4 View Operasional Inventory:** `v_kartu_stok`, `v_ketersediaan_paket`, `v_saran_pemecahan`, `v_rekomendasi_restok`.
+  - **4 View Analitik & Forecasting:** `v_dataset_latih`, `v_proyeksi_stok`, `v_perubahan_permintaan`, `v_keyakinan_model`.
+- **Satu Tingkat Stok & Siklus Hidup SKU (190 SKU Awal):**
+  - Empat induk karung 50 kg (`UREA50KG`, `KCL50KG`, `DLMT50KG`, `FRTPHS50KG`) disimpan langsung di `products` dengan `is_sellable = false` dan `satuan_stok = 'kg'`, bersama 186 SKU produk jual.
+  - Penambahan SKU baru otomatis mendapat `product_id` berurutan melalui sequence `products_product_id_seq` (mulai `191`).
+  - Penghapusan SKU _discontinue_ menggunakan pola **Hybrid Delete**: _soft delete_ (`is_active = false`) jika SKU sudah memiliki riwayat transaksi/stok/opname/harga/forecast atau menjadi komponen paket, dan _hard delete_ jika SKU belum pernah dipakai di tabel mana pun.
+- **Tabel Stok & Harga Bersifat Append-Only:** `stock_movements`, `stock_opname` (dilengkapi kolom `alasan_selisih`), dan `product_price_history` hanya menerima penambahan baris baru tanpa mengubah atau menghapus histori (`REVOKE UPDATE, DELETE` untuk `tokosubur_app`). Saldo stok terkini dihitung dari `COALESCE(SUM(qty), 0)` pada view `v_stok_saat_ini`.
+- **11 Jenis Pergerakan Stok (`stock_movement_types`):** `OPENING`, `RESTOCK_IN`, `RETURN_IN`, `DAMAGED_OUT`, `SPLIT_OUT`, `SPLIT_IN`, `ASSEMBLE_OUT`, `ASSEMBLE_IN`, `SALE_OFFLINE`, `SALE_ONLINE`, dan `ADJUSTMENT`. Pemecahan barang (`SPLIT_OUT` + `SPLIT_IN`) dan perakitan paket (`ASSEMBLE_OUT` + `ASSEMBLE_IN`) wajib dicatat berpasangan dalam satu transaksi atomik.
 - **Penanganan Stok Negatif:** Pergerakan stok yang menghasilkan saldo negatif tidak ditolak oleh database, melainkan ditandai sebagai anomali untuk ditindaklanjuti melalui pencatatan `stock_opname` (`ADJUSTMENT`).
-- **Integritas Referensial (`ON DELETE`):** `products.sku_induk`, `products.supplier_utama`, `product_price_history.sku`, `forecasts.sku`, dan `forecasts.run_id` menggunakan `RESTRICT`, sedangkan konfigurasi turunan (`bundle_components`, `reorder_settings`) menggunakan `CASCADE`.
 
-### Urutan Muat Data Hasil Wrangling (`data/processed/` – 15 CSV)
+### Urutan Setup Database (Migrasi $\rightarrow$ Muat 15 CSV $\rightarrow$ Migrasi Lanjutan)
 
-Jalankan `npm run migrate -- up` terlebih dahulu sebelum memuat data. Setelah migrasi selesai, masuk ke `psql -U postgres -d tokosubur` dan muat 15 berkas CSV dari folder `data/processed/` sesuai urutan ketergantungan _foreign key_ (sesuaikan jalur folder `'D:/programs/tokosubur/data/processed/...'` dengan lokasi repositori lokalmu; berkas `duplikat_per_berkas.csv` memang tidak dimasukkan ke database):
+Karena 4 migrasi terakhir membutuhkan tabel dan data CSV untuk menghitung `reorder_settings` awal serta mengatur `products_product_id_seq`, ikuti urutan eksekusi berikut saat melakukan setup dari database kosong:
+
+#### Langkah A — Jalankan 23 Migrasi Struktur Awal (`users` + 20 Tabel v4 + 3 View Dasar)
+
+```bash
+cd apps/api
+npm run migrate -- up 23
+```
+
+#### Langkah B — Muat 15 CSV Dataset v7 & Hak Akses Role Aplikasi (`psql -U postgres -d tokosubur`)
+
+Sesuaikan jalur folder `'D:/programs/tokosubur/data/processed/...'` dengan lokasi repositori lokalmu (berkas `duplikat_per_berkas.csv` memang tidak dimasukkan ke database):
 
 ```sql
 -- 1. Kelompok Master Mandiri
 \copy channels (channel_id, kanal, kode, jenis, dasar_pendapatan, frekuensi_data) FROM 'D:/programs/tokosubur/data/processed/channels.csv' CSV HEADER;
 \copy suppliers (supplier_code, nama_supplier, kelompok_produk, lead_time_hari) FROM 'D:/programs/tokosubur/data/processed/suppliers.csv' CSV HEADER;
 
--- 2. Products (190 SKU) & Relasi Master (menggunakan staging untuk konversi kolom float -> int)
+-- 2. Products (190 SKU) & Relasi Master (staging untuk konversi kolom float -> int)
 CREATE TEMP TABLE tmp_products (LIKE products);
 ALTER TABLE tmp_products ALTER COLUMN kelompok_induk TYPE NUMERIC;
 \copy tmp_products (sku, product_id, nama, kategori, is_sellable, is_bundle, satuan_stok, kelompok_induk, nama_induk, sku_induk, faktor_ke_induk, is_induk_pemecahan, base_unit, faktor, isi_per_pembelian, satuan_beli, harga_kulakan, hpp, harga_jual_online, harga_jual_offline, sumber_harga, supplier_utama) FROM 'D:/programs/tokosubur/data/processed/products.csv' CSV HEADER;
 
-INSERT INTO products
+INSERT INTO products (
+  sku, product_id, nama, kategori, is_sellable, is_bundle, satuan_stok,
+  kelompok_induk, nama_induk, sku_induk, faktor_ke_induk, is_induk_pemecahan,
+  base_unit, faktor, isi_per_pembelian, satuan_beli, harga_kulakan, hpp,
+  harga_jual_online, harga_jual_offline, sumber_harga, supplier_utama
+)
 SELECT
   sku, product_id, nama, kategori, is_sellable, is_bundle, satuan_stok,
   kelompok_induk::INT, nama_induk, sku_induk, faktor_ke_induk, is_induk_pemecahan,
@@ -276,22 +297,42 @@ ALTER DEFAULT PRIVILEGES FOR ROLE adminu IN SCHEMA public
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO tokosubur_app;
 ALTER DEFAULT PRIVILEGES FOR ROLE adminu IN SCHEMA public
   GRANT USAGE, SELECT ON SEQUENCES TO tokosubur_app;
+```
 
--- 8. Verifikasi Jumlah Baris Dataset v7
+#### Langkah C — Jalankan 4 Migrasi Penutup (Kolom UI, 8 View Lanjutan, & Seed `reorder_settings`)
+
+```bash
+npm run migrate -- up
+```
+
+#### Langkah D — Verifikasi Kelengkapan Database (`psql -U adminu -d tokosubur`)
+
+```sql
 SELECT
+  (SELECT COUNT(*) FROM pgmigrations) AS total_migrations,
   (SELECT COUNT(*) FROM users) AS total_users,
-  (SELECT COUNT(*) FROM products) AS total_products,
+  (SELECT COUNT(*) FROM products WHERE is_active = TRUE) AS active_products,
   (SELECT COUNT(*) FROM products WHERE is_sellable = FALSE) AS induk_karung,
   (SELECT COUNT(*) FROM transaction_items) AS total_items,
   (SELECT COUNT(*) FROM stock_movements) AS total_movements,
-  (SELECT COUNT(*) FROM product_mapping) AS total_mapping;
+  (SELECT COUNT(*) FROM product_mapping) AS total_mapping,
+  (SELECT COUNT(*) FROM reorder_settings) AS seeded_reorder_settings;
 ```
 
-Nilai verifikasi yang diharapkan: `total_users = 3`, `total_products = 190`, `induk_karung = 4`, `total_items = 59946`, `total_movements = 66542`, dan `total_mapping = 1010`.
+Nilai verifikasi yang diharapkan:
+
+- `total_migrations = 27`
+- `total_users = 3`
+- `active_products = 190`
+- `induk_karung = 4`
+- `total_items = 59946`
+- `total_movements = 66542`
+- `total_mapping = 1010`
+- `seeded_reorder_settings = 190`
 
 ## 7. Database Migration
 
-Backend menggunakan `node-pg-migrate` dengan pola **1 file migrasi per objek** (23 migrasi: 2 autentikasi `users`, 20 tabel skema v4, dan 1 file 3 view dasar) untuk memudahkan _rollback_ parsial bila ada revisi skema.
+Backend menggunakan `node-pg-migrate` dengan pola **1 file migrasi per objek** (total 27 migrasi) untuk memudahkan _rollback_ parsial bila diperlukan.
 
 ### Menjalankan seluruh pending migrations
 
@@ -308,16 +349,14 @@ npm run migrate -- down
 ### Rollback beberapa migrations
 
 ```bash
-npm run migrate -- down 3
+npm run migrate -- down 4
 ```
 
-Angka `3` merupakan jumlah migration yang ingin dibatalkan.
+Angka `4` merupakan jumlah migration yang ingin dibatalkan.
 
-**Important:** Rollback dapat menghapus tabel dan data aplikasi. Lakukan pengujian rollback hanya pada database development atau testing dan pastikan backup tersedia jika datanya masih diperlukan.
+**Important:** Rollback dapat menghapus tabel, view, atau data aplikasi. Lakukan pengujian rollback hanya pada database development atau testing dan pastikan backup tersedia jika datanya masih diperlukan.
 
 ### Memeriksa Migration History
-
-Jalankan query berikut melalui PostgreSQL:
 
 ```sql
 SELECT id, name, run_on
@@ -325,7 +364,7 @@ FROM public.pgmigrations
 ORDER BY id;
 ```
 
-## 8. Running the Application & Available Endpoints
+## 8. Running the Application & Endpoint Roadmap
 
 ### Development Mode
 
@@ -333,7 +372,7 @@ ORDER BY id;
 npm run dev
 ```
 
-Server akan dijalankan menggunakan Nodemon pada `http://localhost:3000` agar otomatis restart saat source code berubah.
+Server aktif menggunakan Nodemon pada `http://localhost:3000`.
 
 ### Production Mode
 
@@ -343,7 +382,7 @@ npm start
 
 ### Health Check
 
-Akses `GET http://localhost:3000/` untuk memastikan server aktif:
+Akses `GET http://localhost:3000/`:
 
 ```json
 {
@@ -351,21 +390,22 @@ Akses `GET http://localhost:3000/` untuk memastikan server aktif:
 }
 ```
 
-### Daftar Endpoint Aktif
-
-| Method | Endpoint               | Keterangan & Query / Body Parameter                                                            |
-| ------ | ---------------------- | ---------------------------------------------------------------------------------------------- |
-| `GET`  | `/`                    | Health check status server                                                                     |
-| `POST` | `/api/authentications` | Login pengguna (`username`, `password`) menghasilkan `accessToken` JWT                         |
-| `GET`  | `/api/stocks`          | Daftar stok terkini per SKU dari `v_stok_saat_ini` (`isSellable`, `search`, `limit`, `offset`) |
-
-Kredensial akun tetap untuk pengujian:
+### Kredensial Akun Tetap (Pengujian)
 
 | Role       | Username | Password      |
 | ---------- | -------- | ------------- |
 | `admin`    | `admin`  | `password123` |
 | `owner`    | `fauzi`  | `fauzi123`    |
 | `co-owner` | `istri`  | `istri123`    |
+
+### Endpoint Aktif & Pembagian Tugas Pengembangan Paralel
+
+Seluruh **20 tabel, 11 view, dan seed awal** sudah dikunci (_Schema Freeze_). Tim Backend dibagi menjadi dua jalur kerja paralel dengan file terpisah agar tidak terjadi konflik _merge_:
+
+| Jalur           | Fokus Modul                                                                                    | Berkas (`src/...`)                                                                                                                          | Daftar Endpoint                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| :-------------- | :--------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Developer 1** | **Inventory UI, Mutasi Batch & Repack, Opname 2 Tahap, Import File, & Forecasting/AI**         | `stockRoutes.js`, `stockController.js`, `stockService.js`, `stockRepository.js`, `stockValidator.js`, `forecastRoutes.js`, `aiRoutes.js`    | • `GET /api/stocks` _(Aktif)_ — daftar stok, `safetyStock`, `stokFisik`, `selisih`, `stokCukup`, `status`<br>• `GET /api/stocks/summary` — 4 kartu KPI header Inventory<br>• `GET /api/stocks/alerts` — saran pemecahan, rakit paket, & rekomendasi restok<br>• `GET /api/stocks/:sku/movements` — kartu stok (`v_kartu_stok`)<br>• `POST /api/stocks/movements/batch` — catat mutasi manual (`RESTOCK_IN`, `RETURN_IN`, `DAMAGED_OUT`, & repack atomik `SPLIT_OUT`/`SPLIT_IN`)<br>• `GET /api/stocks/opname/sheet` & `POST /api/stocks/opname` — stok opname 2 langkah (`sku` & `induk`)<br>• `POST /api/stocks/import/preview` & `POST /api/stocks/import/commit` — import file stok 2 tahap<br>• `GET /api/forecasts`, `GET /api/forecasts/models`, `POST /api/ai/chat` |
+| **Developer 2** | **JWT Auth Guard, CRUD/Discontinue Produk, Master Data, Dashboard Penjualan, & Kualitas Data** | `authMiddleware.js`, `auth.js`, `productRoutes.js`, `masterRoutes.js`, `dashboardRoutes.js`, `transactionRoutes.js`, `dataQualityRoutes.js` | • `POST /api/authentications` _(Aktif)_ & `GET /api/auth/me` (+ pasang `authGuard` ke `/api/stocks` & semua route baru)<br>• `GET /api/products`, `GET /api/products/:sku`, `POST /api/products` (tambah SKU baru), `PUT /api/products/:sku`, `DELETE /api/products/:sku` (_hybrid soft/hard delete_ untuk SKU discontinue)<br>• `GET /api/suppliers` & `GET /api/channels`<br>• `GET /api/dashboard/summary`, `GET /api/transactions`, `GET /api/transactions/:id`, `GET /api/marketplace-metrics`<br>• `GET /api/data-quality/status` & `GET/POST /api/product-mappings`                                                                                                                                                                                                 |
 
 ## 9. API Testing (Postman)
 
@@ -376,6 +416,7 @@ Koleksi pengujian otomatis tersedia di folder `apps/api/postman/`:
    - `apps/api/postman/SuburOnline-API.postman_collection.json`
 2. Pilih environment **SuburOnline - Local** di pojok kanan atas (`baseUrl` = `http://localhost:3000`).
 3. Jalankan **Collection Runner** pada **SuburOnline API** untuk mengeksekusi **18 skenario pengujian** (8 skenario **Authentication** termasuk penyimpanan otomatis `{{token}}`, serta 10 skenario **Stocks v4** untuk 190 SKU).
+4. Setiap endpoint baru yang selesai dikerjakan wajib ditambahkan skenario pengujian positif dan negatifnya ke folder modul terkait di koleksi Postman tersebut.
 
 ## 10. Code Quality
 
@@ -401,9 +442,7 @@ Selalu jalankan formatting dan linter sebelum melakukan commit perubahan ke repo
 
 ## 11. Backend Integration
 
-Backend API menjadi penghubung antara Frontend, PostgreSQL, dan ML Service.
-
-Gambaran komunikasi:
+Backend API menjadi penghubung antara Frontend, PostgreSQL, dan ML/AI Service.
 
 ```text
 Frontend (Web)
@@ -413,7 +452,7 @@ Backend API (Express)
       |
       +------> PostgreSQL
       |
-      +------> ML Service
+      +------> ML / AI Service (FastAPI)
 ```
 
 Frontend tidak berkomunikasi langsung dengan database; seluruh operasi data dan integrasi layanan eksternal dikelola melalui Backend API.
@@ -424,14 +463,14 @@ Frontend tidak berkomunikasi langsung dengan database; seluruh operasi data dan 
 
 1. Gunakan repository pattern untuk memisahkan query database dari business logic.
 2. Jangan menulis query SQL langsung di controller.
-3. Setiap perubahan struktur database harus dibuat melalui file migrasi baru (jangan mengubah file migrasi lama yang sudah di-push ke Git).
+3. Skema database saat ini sudah dikunci (_Schema Freeze_). Hindari menambah file migrasi baru kecuali disepakati bersama seluruh tim backend.
 4. Jangan menyimpan credential atau secret di source code.
 5. Gunakan validator untuk memvalidasi setiap request.
-6. Gunakan middleware untuk authentication, authorization, dan error handling.
+6. Gunakan middleware untuk authentication, authorization, upload, dan error handling.
 7. Pisahkan konfigurasi aplikasi dari business logic.
-8. Dokumentasikan endpoint dan perubahan kontrak API.
+8. Dokumentasikan endpoint dan kontrak payload/response.
 9. Jangan commit file `.env`, `node_modules`, atau file build.
-10. Pastikan pengujian Postman lulus sebelum membuat Pull Request atau push ke branch utama.
+10. Pastikan pengujian Postman lulus sebelum melakukan push ke branch utama.
 
 ### Alur Git Harian Tim Backend
 
@@ -443,14 +482,8 @@ git pull --rebase origin main
 git status
 
 # 3. Stage & commit terstruktur per modul
-git add apps/api/migrations/
-git commit -m "feat(db): add schema v4 migrations"
-
-git add apps/api/src/
-git commit -m "feat(api): implement endpoint and service logic"
-
-git add apps/api/postman/ apps/api/readme.md
-git commit -m "docs(api): update Postman collection and backend readme"
+git add apps/api/src/ apps/api/postman/
+git commit -m "feat(api): implement endpoint and update Postman collection"
 
 # 4. Sinkronisasi dan push ke remote repository
 git pull --rebase origin main
