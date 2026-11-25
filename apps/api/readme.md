@@ -6,20 +6,20 @@ Dokumentasi ini ditujukan khusus untuk tim Backend Developer agar setiap anggota
 
 ## 1. Tech Stack
 
-| Teknologi | Kegunaan |
-|---|---|
-| Node.js | JavaScript runtime |
-| Express.js | Backend REST API |
-| PostgreSQL | Relational database |
-| node-postgres (pg) | Koneksi dan query database |
-| node-pg-migrate | Database schema migration |
-| dotenv | Environment configuration |
-| JWT | Authentication |
-| bcryptjs | Password hashing |
-| Multer | File upload middleware |
-| xlsx | Excel file parsing |
-| csv-parser | CSV file parsing |
-| CORS | Cross-Origin Resource Sharing |
+| Teknologi          | Kegunaan                      |
+| ------------------ | ----------------------------- |
+| Node.js            | JavaScript runtime            |
+| Express.js         | Backend REST API              |
+| PostgreSQL         | Relational database           |
+| node-postgres (pg) | Koneksi dan query database    |
+| node-pg-migrate    | Database schema migration     |
+| dotenv             | Environment configuration     |
+| JWT                | Authentication                |
+| bcryptjs           | Password hashing              |
+| Multer             | File upload middleware        |
+| xlsx               | Excel file parsing            |
+| csv-parser         | CSV file parsing              |
+| CORS               | Cross-Origin Resource Sharing |
 
 ## 2. Prerequisites
 
@@ -107,14 +107,15 @@ Buka file `.env` dan sesuaikan konfigurasi dengan lingkungan lokal masing-masing
 
 ### Environment Variables
 
-| Variable | Description | Example |
-|---|---|---|
-| PORT | Backend API port | 3000 |
-| NODE_ENV | Application environment | development |
-| DATABASE_URL | PostgreSQL connection string | postgresql://user:password@localhost:5432/tokosubur |
-| JWT_SECRET | Secret untuk signing JWT | Local secret |
-| JWT_EXPIRES_IN | Token expiration | 1d |
-| ML_SERVICE_URL | ML Service base URL | http://localhost:8000 |
+| Variable               | Description                                                         | Example                                                      |
+| ---------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------ |
+| PORT                   | Backend API port                                                    | 3000                                                         |
+| NODE_ENV               | Application environment                                             | development                                                  |
+| DATABASE_URL           | PostgreSQL connection string untuk runtime aplikasi (role terbatas) | postgresql://tokosubur_app:password@localhost:5432/tokosubur |
+| MIGRATION_DATABASE_URL | PostgreSQL connection string khusus migrasi (role pemilik `adminu`) | postgresql://adminu:password@localhost:5432/tokosubur        |
+| JWT_SECRET             | Secret untuk signing JWT                                            | Local secret                                                 |
+| JWT_EXPIRES_IN         | Token expiration                                                    | 1d                                                           |
+| ML_SERVICE_URL         | ML Service base URL                                                 | http://localhost:8000                                        |
 
 **Security Rules:**
 
@@ -123,25 +124,57 @@ Buka file `.env` dan sesuaikan konfigurasi dengan lingkungan lokal masing-masing
 - Jangan menggunakan JWT secret contoh untuk production.
 - Gunakan `.env.example` sebagai template tanpa credential asli.
 
-## 6. Database Setup
+## 6. Database Setup & Role Separation
 
-Pastikan PostgreSQL sudah berjalan.
-
-Buat database untuk development:
+Pastikan PostgreSQL sudah berjalan, lalu buat database dan pisahkan role pemilik migrasi (`adminu`) dengan role aplikasi (`tokosubur_app`):
 
 ```sql
-CREATE DATABASE tokosubur;
+CREATE DATABASE tokosubur OWNER adminu;
+
+-- Jalankan di dalam database tokosubur sebagai superuser:
+CREATE ROLE tokosubur_app WITH LOGIN PASSWORD 'GANTI_PASSWORD_APP';
+GRANT CONNECT ON DATABASE tokosubur TO tokosubur_app;
+GRANT USAGE ON SCHEMA public TO tokosubur_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO tokosubur_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO tokosubur_app;
+
+-- Tabel riwayat & pergerakan stok bersifat append-only (dilarang UPDATE/DELETE oleh aplikasi)
+REVOKE UPDATE, DELETE ON TABLE stock_movements, stock_opname, product_price_history FROM tokosubur_app;
+REVOKE INSERT, UPDATE, DELETE ON TABLE pgmigrations FROM tokosubur_app;
 ```
 
-Pastikan `DATABASE_URL` dalam `.env` mengarah ke database yang benar.
+### Asumsi & Aturan Desain Database
 
-Contoh format connection string:
+- **Tiga User Tetap:** Sistem menggunakan 3 akun awal yang di-seed otomatis oleh migrasi dengan password ter-hash: `admin` (`admin`), `fauzi` (`owner`), dan `istri` (`co-owner`).
+- **Tabel Stok & Harga Bersifat Append-Only:** `stock_movements`, `stock_opname`, dan `product_price_history` hanya menerima penambahan baris baru tanpa mengubah atau menghapus histori. Saldo terkini dihitung dari agregasi `SUM(qty_change)` pada view `v_current_stock` di dua tingkat: `SKU` (181 item non-paket terlacak) dan `PARENT` (21 induk curah `is_repacked = true`).
+- **Penanganan Stok Negatif:** Pergerakan stok yang menghasilkan saldo negatif tidak ditolak oleh database, melainkan ditandai sebagai anomali untuk ditindaklanjuti melalui pencatatan stok opname (`ADJ_OPNAME`).
+- **Integritas Referensial (`ON DELETE`):** `products.parent_id`, `product_price_history.product_id`, dan `forecasts.product_id` memakai `RESTRICT`, sedangkan konfigurasi turunan (`reorder_settings`, `product_mapping`, `bundle_components`) memakai `CASCADE`.
 
-```text
-postgresql://DB_USER:DB_PASSWORD@localhost:5432/tokosubur
+### Urutan Muat Seed Master (`\copy`)
+
+Setelah `npm run migrate -- up` selesai, muat data master dari `D:/programs/tokosubur/data/` melalui `psql` sesuai urutan ketergantungan _foreign key_ (jangan muat CSV untuk `users`, `channels`, dan `stock_movement_types` karena sudah diisi oleh migrasi):
+
+```sql
+-- 1. Induk mandiri
+\copy suppliers (supplier_id, supplier_code, supplier_name, product_group, lead_time_days, lead_time_source, is_dummy) FROM 'D:/programs/tokosubur/data/suppliers.csv' CSV HEADER;
+\copy product_parents (parent_id, parent_key, parent_name, base_unit, is_repacked, purchase_unit, base_units_per_purchase, supplier_id) FROM 'D:/programs/tokosubur/data/product_parents.csv' CSV HEADER;
+
+-- 2. Merujuk product_parents
+\copy products (product_id, sku_code, product_name, category, parent_id, base_qty_per_unit, is_bundle, track_stock, sold_offline, sold_online, is_active, price_source, is_dummy) FROM 'D:/programs/tokosubur/data/products.csv' CSV HEADER;
+
+-- 3. Merujuk products
+\copy product_price_history (price_id, product_id, valid_from, valid_to, purchase_cost, packing_cost, cogs, online_price, offline_price) FROM 'D:/programs/tokosubur/data/product_price_history.csv' CSV HEADER;
+\copy bundle_components (bundle_product_id, component_product_id, qty_per_bundle) FROM 'D:/programs/tokosubur/data/bundle_components.csv' CSV HEADER;
+\copy product_mapping (mapping_id, channel_id, source_name_norm, source_sku, product_id, match_method, confidence_score, confirmed_by, created_at) FROM 'D:/programs/tokosubur/data/product_mapping.csv' CSV HEADER;
+
+-- 4. Sinkronisasi sequence primary key
+SELECT setval(pg_get_serial_sequence('suppliers', 'supplier_id'), COALESCE((SELECT MAX(supplier_id) FROM suppliers), 1), (SELECT COUNT(*) > 0 FROM suppliers));
+SELECT setval(pg_get_serial_sequence('product_parents', 'parent_id'), COALESCE((SELECT MAX(parent_id) FROM product_parents), 1), (SELECT COUNT(*) > 0 FROM product_parents));
+SELECT setval(pg_get_serial_sequence('products', 'product_id'), COALESCE((SELECT MAX(product_id) FROM products), 1), (SELECT COUNT(*) > 0 FROM products));
+SELECT setval(pg_get_serial_sequence('product_price_history', 'price_id'), COALESCE((SELECT MAX(price_id) FROM product_price_history), 1), (SELECT COUNT(*) > 0 FROM product_price_history));
+SELECT setval(pg_get_serial_sequence('product_mapping', 'mapping_id'), COALESCE((SELECT MAX(mapping_id) FROM product_mapping), 1), (SELECT COUNT(*) > 0 FROM product_mapping));
+SELECT setval(pg_get_serial_sequence('reorder_settings', 'setting_id'), COALESCE((SELECT MAX(setting_id) FROM reorder_settings), 1), (SELECT COUNT(*) > 0 FROM reorder_settings));
 ```
-
-Gunakan username dan password PostgreSQL masing-masing developer.
 
 ## 7. Database Migration
 
@@ -269,16 +302,16 @@ Seluruh operasi data dan integrasi layanan eksternal dikelola melalui Backend AP
 
 ## 12. Useful Commands
 
-| Command | Description |
-|---|---|
-| `npm install` | Install dependencies |
-| `npm run dev` | Start development server |
-| `npm start` | Start application |
-| `npm run migrate -- up` | Run pending migrations |
-| `npm run migrate -- down` | Rollback latest migration |
-| `npm run lint` | Check code quality |
-| `npm run lint:fix` | Automatically fix lint issues |
-| `npm run format` | Format source code |
+| Command                   | Description                   |
+| ------------------------- | ----------------------------- |
+| `npm install`             | Install dependencies          |
+| `npm run dev`             | Start development server      |
+| `npm start`               | Start application             |
+| `npm run migrate -- up`   | Run pending migrations        |
+| `npm run migrate -- down` | Rollback latest migration     |
+| `npm run lint`            | Check code quality            |
+| `npm run lint:fix`        | Automatically fix lint issues |
+| `npm run format`          | Format source code            |
 
 ---
 
