@@ -1,0 +1,812 @@
+{
+  "info": {
+    "_postman_id": "9a4b2d31-6c5e-4f0b-8a23-2b3c4d5e6f02",
+    "name": "SuburOnline API",
+    "description": "Koleksi pengujian endpoint REST API SuburOnline (Authentication & Inventori Skema v4).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Authentication",
+      "description": "Pengujian endpoint login pengguna (POST /api/authentications) untuk 3 akun tetap (admin, owner, co-owner).",
+      "item": [
+        {
+          "name": "1. Login Berhasil - Admin (Simpan Token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status HTTP 200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Struktur response login dan data user valid', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql('success');",
+                  "  pm.expect(body.data).to.be.an('object');",
+                  "  pm.expect(body.data.accessToken).to.be.a('string').and.not.be.empty;",
+                  "  pm.expect(body.data.user).to.deep.include({",
+                  "    id: 1,",
+                  "    username: 'admin',",
+                  "    name: 'Administrator Sistem',",
+                  "    role: 'admin'",
+                  "  });",
+                  "  pm.expect(body.data.user).to.not.have.property('password_hash');",
+                  "});",
+                  "",
+                  "pm.test('Payload JWT memuat id dan role yang sesuai', function () {",
+                  "  const token = pm.response.json().data.accessToken;",
+                  "  const parts = token.split('.');",
+                  "  pm.expect(parts).to.have.lengthOf(3);",
+                  "  const base64Payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');",
+                  "  const payload = JSON.parse(atob(base64Payload));",
+                  "  pm.expect(payload.id).to.eql(1);",
+                  "  pm.expect(payload.role).to.eql('admin');",
+                  "  pm.environment.set('token', token);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/authentications",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "authentications"]
+            }
+          }
+        },
+        {
+          "name": "2. Login Berhasil - Owner (Fauzi + Trim Spasi)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status HTTP 200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Username dengan spasi di-trim dan mengembalikan role owner', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql('success');",
+                  "  pm.expect(body.data.accessToken).to.be.a('string').and.not.be.empty;",
+                  "  pm.expect(body.data.user).to.deep.include({",
+                  "    id: 2,",
+                  "    username: 'fauzi',",
+                  "    name: 'Fauzi',",
+                  "    role: 'owner'",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"  fauzi  \",\n  \"password\": \"fauzi123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/authentications",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "authentications"]
+            }
+          }
+        },
+        {
+          "name": "3. Login Berhasil - Co-Owner (Istri Fauzi)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status HTTP 200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Mengembalikan role co-owner untuk akun istri', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql('success');",
+                  "  pm.expect(body.data.accessToken).to.be.a('string').and.not.be.empty;",
+                  "  pm.expect(body.data.user).to.deep.include({",
+                  "    id: 3,",
+                  "    username: 'istri',",
+                  "    name: 'Istri Fauzi',",
+                  "    role: 'co-owner'",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"istri\",\n  \"password\": \"istri123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/authentications",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "authentications"]
+            }
+          }
+        },
+        {
+          "name": "4. [Negatif] Password Salah (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status HTTP 401 Unauthorized', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test('Pesan gagal autentikasi sesuai standar', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.eql({",
+                  "    status: 'fail',",
+                  "    message: 'Username atau password salah'",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"password_salah\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/authentications",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "authentications"]
+            }
+          }
+        },
+        {
+          "name": "5. [Negatif] Username Tidak Terdaftar (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status HTTP 401 Unauthorized', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test('Pesan error identik dengan password salah (anti-enumeration)', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.eql({",
+                  "    status: 'fail',",
+                  "    message: 'Username atau password salah'",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"pengguna_tidak_ada\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/authentications",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "authentications"]
+            }
+          }
+        },
+        {
+          "name": "6. [Negatif] Username Spasi Saja / Password Kosong (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status HTTP 400 Bad Request', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Menolak input kosong dengan pesan wajib diisi', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.eql({",
+                  "    status: 'fail',",
+                  "    message: 'Username dan password wajib diisi'",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"   \",\n  \"password\": \"\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/authentications",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "authentications"]
+            }
+          }
+        },
+        {
+          "name": "7. [Negatif] Request Body Kosong (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status HTTP 400 Bad Request', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Menolak body kosong tanpa error 500', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.eql({",
+                  "    status: 'fail',",
+                  "    message: 'Username dan password wajib diisi'",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/authentications",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "authentications"]
+            }
+          }
+        },
+        {
+          "name": "8. [Negatif] Tipe Data Non-String pada Payload (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status HTTP 400 Bad Request', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Menolak angka/array pada username atau password', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.eql({",
+                  "    status: 'fail',",
+                  "    message: 'Username dan password wajib diisi'",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": 12345,\n  \"password\": [\"password123\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/authentications",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "authentications"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Stocks",
+      "description": "Pengujian endpoint pemantauan stok per SKU dari v_stok_saat_ini (Dataset v7: 190 SKU).",
+      "item": [
+        {
+          "name": "1. Get Stocks - Default (Tanpa Filter)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status HTTP 200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Struktur response dan meta default (190 SKU) valid', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql('success');",
+                  "  pm.expect(body.data).to.be.an('array').with.lengthOf(50);",
+                  "  pm.expect(body.meta).to.deep.include({ limit: 50, offset: 0, total: 190 });",
+                  "});",
+                  "",
+                  "pm.test('Tipe data numeric dikonversi menjadi number', function () {",
+                  "  const firstItem = pm.response.json().data[0];",
+                  "  pm.expect(firstItem.productId).to.be.a('number');",
+                  "  pm.expect(firstItem.currentStock).to.be.a('number');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/stocks",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "stocks"]
+            }
+          }
+        },
+        {
+          "name": "2. Get Stocks - Filter Induk Karung 50 kg (isSellable=false)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status HTTP 200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Mengembalikan 4 induk karung 50 kg bersatuan kg', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.meta.total).to.eql(4);",
+                  "  pm.expect(body.data).to.have.lengthOf(4);",
+                  "  body.data.forEach(function (row) {",
+                  "    pm.expect(row.isSellable).to.eql(false);",
+                  "    pm.expect(row.isIndukPemecahan).to.eql(true);",
+                  "    pm.expect(row.satuanStok).to.eql('kg');",
+                  "    pm.expect(row.currentStock).to.be.a('number');",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/stocks?isSellable=false",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "stocks"],
+              "query": [
+                {
+                  "key": "isSellable",
+                  "value": "false"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "3. Get Stocks - Filter Produk Jual (isSellable=true) & Paginasi",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status HTTP 200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Total produk dijual 186 dan paginasi limit/offset sesuai', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.meta).to.deep.include({ limit: 10, offset: 5, total: 186 });",
+                  "  pm.expect(body.data).to.have.lengthOf(10);",
+                  "  body.data.forEach(function (row) {",
+                  "    pm.expect(row.isSellable).to.eql(true);",
+                  "    pm.expect(row.currentStock).to.be.a('number');",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/stocks?isSellable=true&limit=10&offset=5",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "stocks"],
+              "query": [
+                {
+                  "key": "isSellable",
+                  "value": "true"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "offset",
+                  "value": "5"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "4. Get Stocks - Pencarian Kata Kunci (urea)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status HTTP 200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Semua hasil mengandung kata kunci urea (case-insensitive)', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.data.length).to.be.above(0);",
+                  "  body.data.forEach(function (row) {",
+                  "    const combined = [row.sku, row.nama, row.namaInduk].join(' ').toLowerCase();",
+                  "    pm.expect(combined).to.include('urea');",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/stocks?search=%20urea%20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "stocks"],
+              "query": [
+                {
+                  "key": "search",
+                  "value": " urea "
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "5. Get Stocks - Pencarian Wildcard Literal (%)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status HTTP 200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Karakter % diperlakukan sebagai teks biasa, bukan wildcard seluruh tabel', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.meta.total).to.be.below(190);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/stocks?search=%25",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "stocks"],
+              "query": [
+                {
+                  "key": "search",
+                  "value": "%"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "6. [Negatif] isSellable Tidak Valid (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status HTTP 400 Bad Request', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Pesan error menyebut parameter isSellable', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql('fail');",
+                  "  pm.expect(body.message).to.include('isSellable');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/stocks?isSellable=ABC",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "stocks"],
+              "query": [
+                {
+                  "key": "isSellable",
+                  "value": "ABC"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "7. [Negatif] limit Bukan Bilangan Bulat (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status HTTP 400 Bad Request', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Pesan error menyebut parameter limit', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql('fail');",
+                  "  pm.expect(body.message).to.include('limit');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/stocks?limit=abc",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "stocks"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "abc"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "8. [Negatif] limit Melebihi Batas Maksimal 200 (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status HTTP 400 Bad Request', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Pesan error menyebut batas limit', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql('fail');",
+                  "  pm.expect(body.message).to.include('limit');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/stocks?limit=201",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "stocks"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "201"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "9. [Negatif] Parameter Berulang / Array (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status HTTP 400 Bad Request', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Menolak parameter array dengan pesan teks tunggal', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql('fail');",
+                  "  pm.expect(body.message).to.include('teks tunggal');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/stocks?limit=1&limit=2",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "stocks"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "2"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "10. [Negatif] offset Negatif (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status HTTP 400 Bad Request', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Pesan error menyebut parameter offset', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql('fail');",
+                  "  pm.expect(body.message).to.include('offset');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/stocks?offset=-1",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "stocks"],
+              "query": [
+                {
+                  "key": "offset",
+                  "value": "-1"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

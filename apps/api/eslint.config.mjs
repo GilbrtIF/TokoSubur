@@ -1,4 +1,3 @@
-
 // apps/api/eslint.config.mjs
 
 import js from '@eslint/js';
@@ -12,12 +11,7 @@ import importPlugin from 'eslint-plugin-import-next';
 export default [
   // 1. Abaikan folder dan file yang tidak perlu di-lint
   {
-    ignores: [
-      'node_modules/',
-      'migrations/',
-      'dist/',
-      'coverage/',
-    ],
+    ignores: ['node_modules/', 'migrations/', 'dist/', 'coverage/'],
   },
 
   // 2. Konfigurasi dasar JavaScript
