@@ -9,18 +9,18 @@ const jwt = require('jsonwebtoken');
 const userRepository = require('../repositories/userRepository');
 
 const { jwtSecret, jwtExpiresIn } = require('../config/env');
+const {
+  AuthenticationError,
+  InvariantError,
+  NotFoundError,
+} = require('../exceptions');
 
-/**
- * Membuat error autentikasi.
- *
- * @returns {Error}
- */
-const createUnauthorizedError = () => {
-  const error = new Error('Username atau password salah');
-  error.statusCode = 401;
+const BCRYPT_ROUNDS = 12;
 
-  return error;
-};
+const INVALID_CREDENTIALS_MESSAGE = 'Username atau password salah';
+
+const createUnauthorizedError = () =>
+  new AuthenticationError(INVALID_CREDENTIALS_MESSAGE);
 
 /**
  * Login pengguna.
@@ -63,6 +63,7 @@ const login = async (username, password) => {
   // 4. Buat payload JWT
   const payload = {
     id: user.id,
+    username: user.username,
     role: user.role,
   };
 
@@ -83,6 +84,54 @@ const login = async (username, password) => {
   };
 };
 
+const toPublicUser = (user) => ({
+  id: user.id,
+  username: user.username,
+  name: user.name,
+  role: user.role,
+});
+
+/**
+ * Profil pengguna yang sedang login (dari token).
+ */
+const getMe = async (userId) => {
+  const user = await userRepository.findById(userId);
+  if (!user) {
+    // Token valid tetapi user sudah tidak ada -> minta login ulang.
+    throw new AuthenticationError(
+      'Pengguna tidak ditemukan, silakan login ulang'
+    );
+  }
+  return toPublicUser(user);
+};
+
+/**
+ * Mengganti password pengguna yang sedang login.
+ */
+const changePassword = async (userId, { oldPassword, newPassword }) => {
+  const user = await userRepository.findById(userId);
+  if (!user) {
+    throw new NotFoundError('Pengguna tidak ditemukan');
+  }
+
+  const isOldPasswordValid = await bcrypt.compare(
+    oldPassword,
+    user.password_hash
+  );
+  if (!isOldPasswordValid) {
+    throw new InvariantError('Password lama tidak sesuai');
+  }
+
+  if (oldPassword === newPassword) {
+    throw new InvariantError('Password baru harus berbeda dari password lama');
+  }
+
+  const newHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+  await userRepository.updatePasswordHash(userId, newHash);
+};
+
 module.exports = {
   login,
+  getMe,
+  changePassword,
 };

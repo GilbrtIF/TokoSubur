@@ -26,7 +26,7 @@ const upload = multer({
   fileFilter,
 });
 
-const uploadSingleStockFile = (req, res, next) => {
+const uploadSingleFile = (req, res, next) => {
   const handler = upload.single('file');
   handler(req, res, (err) => {
     if (!err) {
@@ -47,5 +47,7 @@ const uploadSingleStockFile = (req, res, next) => {
 };
 
 module.exports = {
-  uploadSingleStockFile,
+  uploadSingleFile,
+  // Alias lama agar route stok yang sudah ada tetap jalan.
+  uploadSingleStockFile: uploadSingleFile,
 };

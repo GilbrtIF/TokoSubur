@@ -26,7 +26,7 @@ Dokumentasi ini ditujukan khusus untuk tim Backend Developer agar setiap anggota
 
 Pastikan perangkat sudah memiliki:
 
-- Node.js (v18+) dan npm.
+- Node.js **v22+** (disarankan v24 LTS sesuai panduan tim) dan npm. Backend memakai `fetch` bawaan Node untuk memanggil ML service.
 - PostgreSQL (v14+) beserta CLI `psql`.
 - Git.
 - Postman (untuk pengujian koleksi endpoint).
@@ -39,6 +39,8 @@ Struktur direktori Backend API:
 ```text
 apps/api/
 ├── migrations/                  # 27 file migrasi individual (auth, 20 tabel v4, 11 view, & seed reorder)
+├── docs/
+│   └── api-contract.md          # Kontrak seluruh endpoint untuk FE & tim AI/ML
 ├── postman/                     # Koleksi dan environment pengujian Postman
 │   ├── SuburOnline-API.postman_collection.json
 │   └── SuburOnline-Local.postman_environment.json
@@ -113,15 +115,17 @@ Buka file `.env` dan sesuaikan konfigurasi dengan lingkungan lokal masing-masing
 
 ### Environment Variables
 
-| Variable               | Description                                                         | Example                                                      |
-| ---------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------ |
-| PORT                   | Backend API port                                                    | 3000                                                         |
-| NODE_ENV               | Application environment                                             | development                                                  |
-| DATABASE_URL           | PostgreSQL connection string untuk runtime aplikasi (role terbatas) | postgresql://tokosubur_app:password@localhost:5432/tokosubur |
-| MIGRATION_DATABASE_URL | PostgreSQL connection string khusus migrasi (role pemilik `adminu`) | postgres://adminu:password@localhost:5432/tokosubur          |
-| JWT_SECRET             | Secret untuk signing JWT                                            | Local secret                                                 |
-| JWT_EXPIRES_IN         | Token expiration                                                    | 1d                                                           |
-| ML_SERVICE_URL         | ML/AI Service base URL                                              | http://localhost:8000                                        |
+| Variable               | Description                                                           | Example                                                      |
+| ---------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------ |
+| PORT                   | Backend API port                                                      | 3000                                                         |
+| NODE_ENV               | Application environment                                               | development                                                  |
+| DATABASE_URL           | PostgreSQL connection string untuk runtime aplikasi (role terbatas)   | postgresql://tokosubur_app:password@localhost:5432/tokosubur |
+| MIGRATION_DATABASE_URL | PostgreSQL connection string khusus migrasi (role pemilik `adminu`)   | postgres://adminu:password@localhost:5432/tokosubur          |
+| JWT_SECRET             | Secret untuk signing JWT                                              | Local secret                                                 |
+| JWT_EXPIRES_IN         | Token expiration                                                      | 1d                                                           |
+| ML_SERVICE_URL         | ML/AI Service base URL (kosong = fitur AI chat nonaktif, respons 503) | http://localhost:8000                                        |
+| ML_SERVICE_TIMEOUT_MS  | Batas waktu menunggu jawaban ML service (ms)                          | 30000                                                        |
+| SERVICE_API_KEY        | Kunci `X-Service-Key` untuk ML service mengirim hasil forecast        | String acak panjang                                          |
 
 **Security Rules:**
 
@@ -326,8 +330,8 @@ Nilai verifikasi yang diharapkan:
 - `active_products = 190`
 - `induk_karung = 4`
 - `total_items = 59946`
-- `total_movements = 66542`
-- `total_mapping = 1010`
+- `total_movements = 66541`
+- `total_mapping = 2274`
 - `seeded_reorder_settings = 190`
 
 ## 7. Database Migration
@@ -398,14 +402,32 @@ Akses `GET http://localhost:3000/`:
 | `owner`    | `fauzi`  | `fauzi123`    |
 | `co-owner` | `istri`  | `istri123`    |
 
-### Endpoint Aktif & Pembagian Tugas Pengembangan Paralel
+### Autentikasi Endpoint
 
-Seluruh **20 tabel, 11 view, dan seed awal** sudah dikunci (_Schema Freeze_). Tim Backend dibagi menjadi dua jalur kerja paralel dengan file terpisah agar tidak terjadi konflik _merge_:
+Semua route di bawah `/api` kecuali `POST /api/authentications` dilindungi `authGuard` (`src/middleware/authMiddleware.js`). Kirim header:
 
-| Jalur           | Fokus Modul                                                                                    | Berkas (`src/...`)                                                                                                                          | Daftar Endpoint                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| :-------------- | :--------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Developer 1** | **Inventory UI, Mutasi Batch & Repack, Opname 2 Tahap, Import File, & Forecasting/AI**         | `stockRoutes.js`, `stockController.js`, `stockService.js`, `stockRepository.js`, `stockValidator.js`, `forecastRoutes.js`, `aiRoutes.js`    | • `GET /api/stocks` _(Aktif)_ — daftar stok, `safetyStock`, `stokFisik`, `selisih`, `stokCukup`, `status`<br>• `GET /api/stocks/summary` — 4 kartu KPI header Inventory<br>• `GET /api/stocks/alerts` — saran pemecahan, rakit paket, & rekomendasi restok<br>• `GET /api/stocks/:sku/movements` — kartu stok (`v_kartu_stok`)<br>• `POST /api/stocks/movements/batch` — catat mutasi manual (`RESTOCK_IN`, `RETURN_IN`, `DAMAGED_OUT`, & repack atomik `SPLIT_OUT`/`SPLIT_IN`)<br>• `GET /api/stocks/opname/sheet` & `POST /api/stocks/opname` — stok opname 2 langkah (`sku` & `induk`)<br>• `POST /api/stocks/import/preview` & `POST /api/stocks/import/commit` — import file stok 2 tahap<br>• `GET /api/forecasts`, `GET /api/forecasts/models`, `POST /api/ai/chat` |
-| **Developer 2** | **JWT Auth Guard, CRUD/Discontinue Produk, Master Data, Dashboard Penjualan, & Kualitas Data** | `authMiddleware.js`, `auth.js`, `productRoutes.js`, `masterRoutes.js`, `dashboardRoutes.js`, `transactionRoutes.js`, `dataQualityRoutes.js` | • `POST /api/authentications` _(Aktif)_ & `GET /api/auth/me` (+ pasang `authGuard` ke `/api/stocks` & semua route baru)<br>• `GET /api/products`, `GET /api/products/:sku`, `POST /api/products` (tambah SKU baru), `PUT /api/products/:sku`, `DELETE /api/products/:sku` (_hybrid soft/hard delete_ untuk SKU discontinue)<br>• `GET /api/suppliers` & `GET /api/channels`<br>• `GET /api/dashboard/summary`, `GET /api/transactions`, `GET /api/transactions/:id`, `GET /api/marketplace-metrics`<br>• `GET /api/data-quality/status` & `GET/POST /api/product-mappings`                                                                                                                                                                                                 |
+```text
+Authorization: Bearer <accessToken>
+```
+
+Respons `401` jika token tidak ada/tidak valid/kedaluwarsa. Untuk membatasi per role gunakan `requireRole('admin', 'owner')` setelah `authGuard`.
+
+### Daftar Endpoint
+
+Kontrak lengkap (payload, respons, aturan bisnis, dan integrasi ML service) ada di **[`docs/api-contract.md`](docs/api-contract.md)**.
+
+| Modul               | Endpoint                                                                                                                                                                                 |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Auth                | `POST /api/authentications`, `GET /api/auth/me`, `PUT /api/auth/password`                                                                                                                |
+| Master Data         | `GET /api/suppliers`, `GET /api/channels`                                                                                                                                                |
+| Produk              | `GET /api/products`, `GET /api/products/categories`, `GET/PUT/DELETE /api/products/:sku`, `POST /api/products`                                                                           |
+| Inventori           | `GET /api/stocks`, `/summary`, `/alerts`, `/history`, `/:sku/movements`, `POST /movements/batch`, `GET /opname/sheet`, `GET/POST /opname`, `POST /import/preview`, `POST /import/commit` |
+| Transaksi           | `GET/POST /api/transactions`, `GET /api/transactions/:id`, `POST /api/transactions/import/preview`, `POST /api/transactions/import/commit`                                               |
+| Dashboard/Analytics | `GET /api/dashboard/summary`, `GET /api/analytics/sales`, `/top-products`, `/export`, `GET /api/marketplace-metrics`                                                                     |
+| Settings            | `GET /api/settings/reorder`, `PUT /api/settings/reorder`, `PUT /api/settings/reorder/:sku`                                                                                               |
+| Kualitas Data       | `GET /api/data-quality/status`, `/rejected`, `/ambiguous`, `GET /api/import-batches`, `GET/POST /api/product-mappings`                                                                   |
+| Forecast            | `GET /api/forecasts`, `/models`, `/sku/:sku`, `/demand-changes`, `/stock-projection`, `/training-dataset`, `POST /runs`, `POST /runs/:runId/items`, `PUT /models/:runId/activate`        |
+| AI                  | `GET /api/ai/health`, `POST /api/ai/chat`                                                                                                                                                |
 
 ## 9. API Testing (Postman)
 
@@ -415,7 +437,10 @@ Koleksi pengujian otomatis tersedia di folder `apps/api/postman/`:
    - `apps/api/postman/SuburOnline-Local.postman_environment.json`
    - `apps/api/postman/SuburOnline-API.postman_collection.json`
 2. Pilih environment **SuburOnline - Local** di pojok kanan atas (`baseUrl` = `http://localhost:3000`).
-3. Jalankan **Collection Runner** pada **SuburOnline API** untuk mengeksekusi **18 skenario pengujian** (8 skenario **Authentication** termasuk penyimpanan otomatis `{{token}}`, serta 10 skenario **Stocks v4** untuk 190 SKU).
+3. Jalankan **Collection Runner** pada **SuburOnline API** untuk mengeksekusi **82 request** di 10 folder: Authentication, Stocks, Master Data, Products, Transactions, Dashboard & Analytics, Settings, Data Quality, serta Forecast & AI.
+   - Request import (Stocks 20 dan Transactions 6) membutuhkan berkas yang dipilih manual di tab _Body_.
+   - Folder Products membuat lalu menghapus SKU uji coba; folder Transactions mencatat 1 penjualan uji. Jalankan di database development, bukan produksi.
+   - Seluruh endpoint selain login wajib membawa header `Authorization: Bearer <accessToken>`. Koleksi sudah memakai _Bearer Token_ `{{token}}` di level koleksi, jadi jalankan folder **Authentication** lebih dulu.
 4. Setiap endpoint baru yang selesai dikerjakan wajib ditambahkan skenario pengujian positif dan negatifnya ke folder modul terkait di koleksi Postman tersebut.
 
 ## 10. Code Quality

@@ -1,4 +1,8 @@
 const stockService = require('../services/stockService');
+const stockHistoryService = require('../services/stockHistoryService');
+const {
+  validateStockHistoryQuery,
+} = require('../validators/stockHistoryValidator');
 const {
   validateStockQuery,
   validateStockMovementsRequest,
@@ -144,7 +148,10 @@ const previewStockImport = async (req, res, next) => {
 const commitStockImport = async (req, res, next) => {
   try {
     const payload = validateStockImportCommitPayload(req.body);
-    const result = await stockService.commitStockImport(payload);
+    const result = await stockService.commitStockImport({
+      ...payload,
+      importedBy: req.user ? req.user.username : null,
+    });
 
     return res.status(201).json({
       status: 'success',
@@ -156,7 +163,21 @@ const commitStockImport = async (req, res, next) => {
   }
 };
 
+const getStockHistory = async (req, res, next) => {
+  try {
+    const result = await stockHistoryService.getStockHistory(
+      validateStockHistoryQuery(req.query)
+    );
+    return res
+      .status(200)
+      .json({ status: 'success', data: result.data, meta: result.meta });
+  } catch (error) {
+    return next(error);
+  }
+};
+
 module.exports = {
+  getStockHistory,
   getStocks,
   getStockSummary,
   getStockAlerts,

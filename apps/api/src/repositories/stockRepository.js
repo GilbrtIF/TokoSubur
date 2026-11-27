@@ -658,6 +658,7 @@ const findExistingStockMovementsForDedup = async ({
       sku,
       jenis,
       qty,
+      COALESCE(ref, '') AS ref,
       COALESCE(sumber, '') AS sumber
     FROM stock_movements
     WHERE tanggal >= $1::date
@@ -669,20 +670,33 @@ const findExistingStockMovementsForDedup = async ({
   return rows;
 };
 
-const getTableColumns = async (client, tableName) => {
-  const query = `
-    SELECT column_name
-    FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = $1
-    ORDER BY ordinal_position
-  `;
-  const { rows } = await client.query(query, [tableName]);
-  return new Set(rows.map((r) => r.column_name));
+const IMPORT_JENIS_STOK = 'stok';
+const MAX_SUMBER_LENGTH = 200;
+const MAX_TEKS_DITOLAK_LENGTH = 300;
+const MAX_ALASAN_DITOLAK_LENGTH = 300;
+const MAX_BERKAS_LENGTH = 200;
+
+const clip = (value, maxLength) => {
+  if (value === null || value === undefined) {
+    return value;
+  }
+  const text = String(value);
+  return text.length > maxLength ? `${text.slice(0, maxLength - 3)}...` : text;
 };
 
-const pickFirstExistingColumn = (columnSet, candidates) =>
-  candidates.find((col) => columnSet.has(col)) || null;
+const resolveBatchStatus = ({
+  insertedCount,
+  duplicateCount,
+  rejectedCount,
+}) => {
+  if (insertedCount === 0) {
+    return 'gagal';
+  }
+  if (duplicateCount > 0 || rejectedCount > 0) {
+    return 'sebagian';
+  }
+  return 'berhasil';
+};
 
 const commitStockImportBatch = async ({
   fileName,
@@ -690,202 +704,93 @@ const commitStockImportBatch = async ({
   validRows,
   duplicateCount,
   rejectedRows,
+  importedBy,
 }) => {
   const client = await getClient();
   try {
     await client.query('BEGIN');
 
-    const batchColumns = await getTableColumns(client, 'import_batches');
+    const berkas = clip(fileName, MAX_BERKAS_LENGTH);
+    const status = resolveBatchStatus({
+      insertedCount: validRows.length,
+      duplicateCount,
+      rejectedCount: rejectedRows.length,
+    });
 
-    let statusBatch = 'berhasil';
-    if (validRows.length === 0) {
-      statusBatch = 'gagal';
-    } else if (rejectedRows.length > 0 || duplicateCount > 0) {
-      statusBatch = 'sebagian';
-    }
-
-    const batchFieldMappings = [
-      {
-        col: pickFirstExistingColumn(batchColumns, [
-          'berkas',
-          'nama_berkas',
-          'nama_file',
-          'file_name',
-          'filename',
-        ]),
-        val: fileName,
-      },
-      {
-        col: pickFirstExistingColumn(batchColumns, [
-          'sumber',
-          'jenis',
-          'tipe',
-          'source',
-        ]),
-        val: 'IMPORT_STOK_UI',
-      },
-      {
-        col: pickFirstExistingColumn(batchColumns, [
-          'baris_total',
-          'total_baris',
-          'total_rows',
-          'jumlah_baris',
-        ]),
-        val: totalRows,
-      },
-      {
-        col: pickFirstExistingColumn(batchColumns, [
-          'baris_baru',
-          'baris_valid',
-          'baris_berhasil',
-          'baris_masuk',
-          'valid_rows',
-          'inserted_rows',
-        ]),
-        val: validRows.length,
-      },
-      {
-        col: pickFirstExistingColumn(batchColumns, [
-          'baris_duplikat',
-          'duplikat',
-          'duplicate_rows',
-        ]),
-        val: duplicateCount,
-      },
-      {
-        col: pickFirstExistingColumn(batchColumns, [
-          'baris_ditolak',
-          'ditolak',
-          'rejected_rows',
-        ]),
-        val: rejectedRows.length,
-      },
-      {
-        col: pickFirstExistingColumn(batchColumns, ['status']),
-        val: statusBatch,
-      },
-    ].filter((item) => item.col !== null);
-
-    const batchColNames = batchFieldMappings.map((item) => item.col);
-    const batchPlaceholders = batchFieldMappings.map((_, idx) => `$${idx + 1}`);
-    const batchValues = batchFieldMappings.map((item) => item.val);
-
-    const insertBatchSql = `
-      INSERT INTO import_batches (${batchColNames.join(', ')})
-      VALUES (${batchPlaceholders.join(', ')})
-      RETURNING *
-    `;
-
-    const { rows: batchRows } = await client.query(insertBatchSql, batchValues);
+    const { rows: batchRows } = await client.query(
+      `
+        INSERT INTO import_batches (
+          jenis_impor, nama_berkas, baris_total, baris_baru,
+          baris_duplikat, baris_ditolak, status, diimpor_oleh, diimpor_pada
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)
+        RETURNING *
+      `,
+      [
+        IMPORT_JENIS_STOK,
+        berkas,
+        totalRows,
+        validRows.length,
+        duplicateCount,
+        rejectedRows.length,
+        status,
+        importedBy || null,
+      ]
+    );
     const batch = batchRows[0];
-    const batchId = batch.batch_id !== undefined ? batch.batch_id : batch.id;
+    const batchId = batch.batch_id;
 
     let insertedMovements = [];
     if (validRows.length > 0) {
       const moveValues = [];
       const movePlaceholders = validRows.map((row, index) => {
         const base = index * 7;
-        const ref = `IMPORT-${batchId}-${row.rowNumber}`;
-        const sumber = row.catatan || `Import Berkas (${fileName})`;
         moveValues.push(
           row.tanggal,
           row.sku,
           row.jenis,
           row.qty,
-          ref,
-          sumber,
+          `IMPORT-${batchId}-${row.rowNumber}`,
+          clip(row.catatan || `Import Berkas (${berkas})`, MAX_SUMBER_LENGTH),
           batchId
         );
         return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7})`;
       });
 
-      const insertMoveSql = `
-        INSERT INTO stock_movements (tanggal, sku, jenis, qty, ref, sumber, batch_id)
-        VALUES ${movePlaceholders.join(', ')}
-        RETURNING movement_id, tanggal, sku, jenis, qty, ref, sumber, batch_id
-      `;
-
-      const { rows: moveRows } = await client.query(insertMoveSql, moveValues);
+      const { rows: moveRows } = await client.query(
+        `
+          INSERT INTO stock_movements (tanggal, sku, jenis, qty, ref, sumber, batch_id)
+          VALUES ${movePlaceholders.join(', ')}
+          RETURNING movement_id, tanggal, sku, jenis, qty, ref, sumber, batch_id
+        `,
+        moveValues
+      );
       insertedMovements = moveRows;
     }
 
     if (rejectedRows.length > 0) {
-      const rejectColumns = await getTableColumns(client, 'laporan_ditolak');
-      const rejectColSpecs = [
-        {
-          col: pickFirstExistingColumn(rejectColumns, ['batch_id']),
-          getValue: () => batchId,
-        },
-        {
-          col: pickFirstExistingColumn(rejectColumns, [
-            'tahap',
-            'sumber',
-            'stage',
-          ]),
-          getValue: () => 'IMPORT_STOK',
-        },
-        {
-          col: pickFirstExistingColumn(rejectColumns, [
-            'berkas',
-            'nama_berkas',
-            'nama_file',
-            'file_name',
-            'filename',
-          ]),
-          getValue: () => fileName,
-        },
-        {
-          col: pickFirstExistingColumn(rejectColumns, [
-            'baris_excel',
-            'baris',
-            'no_baris',
-            'row_number',
-          ]),
-          getValue: (row) => row.rowNumber,
-        },
-        {
-          col: pickFirstExistingColumn(rejectColumns, [
-            'teks',
-            'data_mentah',
-            'raw_text',
-            'konten',
-          ]),
-          getValue: (row) => row.rawText,
-        },
-        {
-          col: pickFirstExistingColumn(rejectColumns, [
-            'alasan',
-            'keterangan',
-            'reason',
-          ]),
-          getValue: (row) => row.reason,
-        },
-        {
-          col: pickFirstExistingColumn(rejectColumns, [
-            'jenis_alasan',
-            'kategori_alasan',
-            'error_type',
-          ]),
-          getValue: () => 'VALIDASI_IMPORT_STOK',
-        },
-      ].filter((spec) => spec.col !== null);
-
-      const rejectColNames = rejectColSpecs.map((spec) => spec.col);
       const rejectValues = [];
-      const rejectPlaceholders = rejectedRows.map((row) => {
-        const rowPlaceholders = rejectColSpecs.map((spec) => {
-          rejectValues.push(spec.getValue(row));
-          return `$${rejectValues.length}`;
-        });
-        return `(${rowPlaceholders.join(', ')})`;
+      const rejectPlaceholders = rejectedRows.map((row, index) => {
+        const base = index * 7;
+        rejectValues.push(
+          'IMPORT_STOK',
+          berkas,
+          row.rowNumber,
+          clip(row.rawText, MAX_TEKS_DITOLAK_LENGTH),
+          clip(row.reason, MAX_ALASAN_DITOLAK_LENGTH),
+          'VALIDASI_IMPORT_STOK',
+          batchId
+        );
+        return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7})`;
       });
 
-      const insertRejectSql = `
-        INSERT INTO laporan_ditolak (${rejectColNames.join(', ')})
-        VALUES ${rejectPlaceholders.join(', ')}
-      `;
-
-      await client.query(insertRejectSql, rejectValues);
+      await client.query(
+        `
+          INSERT INTO laporan_ditolak (tahap, berkas, baris_excel, teks, alasan, jenis_alasan, batch_id)
+          VALUES ${rejectPlaceholders.join(', ')}
+        `,
+        rejectValues
+      );
     }
 
     await client.query('COMMIT');

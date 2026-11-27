@@ -4,57 +4,92 @@
  */
 
 const authService = require('../services/authService');
+const { InvariantError } = require('../exceptions');
 
 /**
  * POST /api/authentications
  *
  * Login pengguna.
  */
-const login = async (req, res) => {
+const login = async (req, res, next) => {
   try {
-    // 1. Ambil data dari request body
     const { username, password } = req.body || {};
 
-    // 2. Validasi input
     if (
       typeof username !== 'string' ||
       username.trim().length === 0 ||
       typeof password !== 'string' ||
       password.length === 0
     ) {
-      return res.status(400).json({
-        status: 'fail',
-        message: 'Username dan password wajib diisi',
-      });
+      throw new InvariantError('Username dan password wajib diisi');
     }
 
-    // 3. Panggil authentication service
     const data = await authService.login(username.trim(), password);
 
-    // 4. Kirim response sukses
     return res.status(200).json({
       status: 'success',
       data,
     });
   } catch (error) {
-    // 5. Kesalahan kredensial
-    if (error.statusCode === 401) {
-      return res.status(401).json({
-        status: 'fail',
-        message: 'Username atau password salah',
-      });
+    return next(error);
+  }
+};
+
+const MIN_PASSWORD_LENGTH = 8;
+const MAX_PASSWORD_LENGTH = 72; // batas efektif bcrypt
+
+/**
+ * GET /api/auth/me
+ */
+const getMe = async (req, res, next) => {
+  try {
+    const user = await authService.getMe(req.user.id);
+    return res.status(200).json({ status: 'success', data: user });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+/**
+ * PUT /api/auth/password
+ * Body: { oldPassword, newPassword }
+ */
+const changePassword = async (req, res, next) => {
+  try {
+    const { oldPassword, newPassword } = req.body || {};
+
+    if (typeof oldPassword !== 'string' || oldPassword.length === 0) {
+      throw new InvariantError('oldPassword wajib diisi');
+    }
+    if (typeof newPassword !== 'string' || newPassword.length === 0) {
+      throw new InvariantError('newPassword wajib diisi');
+    }
+    if (
+      newPassword.length < MIN_PASSWORD_LENGTH ||
+      newPassword.length > MAX_PASSWORD_LENGTH
+    ) {
+      throw new InvariantError(
+        `newPassword harus ${MIN_PASSWORD_LENGTH}-${MAX_PASSWORD_LENGTH} karakter`
+      );
+    }
+    if (!/[A-Za-z]/.test(newPassword) || !/\d/.test(newPassword)) {
+      throw new InvariantError(
+        'newPassword harus mengandung minimal satu huruf dan satu angka'
+      );
     }
 
-    // 6. Tangani kesalahan internal
-    console.error('[Auth Controller] Login error:', error);
-
-    return res.status(500).json({
-      status: 'error',
-      message: 'Terjadi kesalahan pada server',
+    await authService.changePassword(req.user.id, { oldPassword, newPassword });
+    return res.status(200).json({
+      status: 'success',
+      message: 'Password berhasil diperbarui',
     });
+  } catch (error) {
+    return next(error);
   }
 };
 
 module.exports = {
   login,
+  getMe,
+  changePassword,
 };
