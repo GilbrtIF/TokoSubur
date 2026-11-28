@@ -5,6 +5,7 @@ const { uploadSingleStockFile } = require('../middleware/uploadMiddleware');
 const router = express.Router();
 
 router.get('/summary', stockController.getStockSummary);
+router.get('/history', stockController.getStockHistory);
 router.get('/alerts', stockController.getStockAlerts);
 router.get('/opname/sheet', stockController.getOpnameSheet);
 router.get('/opname', stockController.getOpnameHistory);

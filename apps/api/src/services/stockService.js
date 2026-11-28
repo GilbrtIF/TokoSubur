@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const stockRepository = require('../repositories/stockRepository');
 const { parseStockImportFile } = require('../utils/stockFileParser');
 const InvariantError = require('../exceptions/invariantError');
@@ -197,80 +198,119 @@ const getStockMovements = async ({ sku, limit, offset }) => {
   };
 };
 
-const createBatchMovements = async ({ tanggal, items }) => {
-  const requestedSkus = [...new Set(items.map((item) => item.sku))];
-  const initialProducts =
-    await stockRepository.findProductsBySkus(requestedSkus);
-  const productMap = new Map(initialProducts.map((p) => [p.sku, p]));
+const round2 = (value) => Math.round(Number(value) * 100) / 100;
 
-  requestedSkus.forEach((sku) => {
-    const product = productMap.get(sku);
-    if (!product) {
-      throw new NotFoundError(`Produk dengan SKU ${sku} tidak ditemukan`);
-    }
-    if (!product.is_active) {
-      throw new InvariantError(`Produk ${sku} sudah nonaktif (discontinue)`);
+const MAX_SUMBER_LENGTH = 200;
+const clipText = (value, maxLength) =>
+  value && value.length > maxLength
+    ? `${value.slice(0, maxLength - 3)}...`
+    : value;
+
+/**
+ * Mengubah item permintaan menjadi daftar operasi pemecahan (repack) yang seragam.
+ * Mendukung dua bentuk payload:
+ *  - Mode kemasan: { sku: <SKU kemasan>, jenis: 'repack', qty }
+ *  - Mode induk  : { sku: <SKU induk>, jenis: 'repack', repackItems: [{ skuKemasan, qtyKemasan }] }
+ */
+const expandRepackItem = (item) => {
+  if (item.repackItems && item.repackItems.length > 0) {
+    return item.repackItems.map((sub) => ({
+      skuKemasan: sub.skuKemasan,
+      qtyKemasan: sub.qtyKemasan,
+      skuIndukDiminta: item.sku,
+    }));
+  }
+
+  return [
+    { skuKemasan: item.sku, qtyKemasan: item.qty, skuIndukDiminta: null },
+  ];
+};
+
+const createBatchMovements = async ({ tanggal, items }) => {
+  // 1. Kumpulkan semua SKU yang disebut di payload (termasuk kemasan repack).
+  const requestedSkus = new Set();
+  items.forEach((item) => {
+    requestedSkus.add(item.sku);
+    if (item.jenis === 'SPLIT') {
+      expandRepackItem(item).forEach((op) => requestedSkus.add(op.skuKemasan));
     }
   });
 
-  const extraParentSkus = [];
-  const bundleSkus = [];
+  const initialProducts = await stockRepository.findProductsBySkus([
+    ...requestedSkus,
+  ]);
+  const productMap = new Map(initialProducts.map((p) => [p.sku, p]));
+
+  const ensureActiveProduct = (sku, label = 'Produk') => {
+    const product = productMap.get(sku);
+    if (!product) {
+      throw new NotFoundError(`${label} dengan SKU ${sku} tidak ditemukan`);
+    }
+    if (!product.is_active) {
+      throw new InvariantError(`${label} ${sku} sudah nonaktif (discontinue)`);
+    }
+    return product;
+  };
+
+  requestedSkus.forEach((sku) => ensureActiveProduct(sku));
+
+  // 2. Validasi konfigurasi repack & paket, kumpulkan SKU induk / komponen tambahan.
+  const extraParentSkus = new Set();
+  const bundleSkus = new Set();
 
   items.forEach((item) => {
     const product = productMap.get(item.sku);
-    const jenis = item.jenis.toLowerCase();
 
-    if (jenis === 'repack') {
-      if (
-        !product.sku_induk ||
-        !product.faktor_ke_induk ||
-        Number(product.faktor_ke_induk) <= 0
-      ) {
-        throw new InvariantError(
-          `Produk ${item.sku} tidak memiliki konfigurasi bahan induk pemecahan`
-        );
-      }
-      if (!productMap.has(product.sku_induk)) {
-        extraParentSkus.push(product.sku_induk);
-      }
+    if (item.jenis === 'SPLIT') {
+      expandRepackItem(item).forEach((op) => {
+        const kemasan = productMap.get(op.skuKemasan);
+        if (
+          !kemasan.sku_induk ||
+          !kemasan.faktor_ke_induk ||
+          Number(kemasan.faktor_ke_induk) <= 0
+        ) {
+          throw new InvariantError(
+            `Produk ${kemasan.sku} tidak memiliki konfigurasi bahan induk pemecahan`
+          );
+        }
+        if (op.skuIndukDiminta && kemasan.sku_induk !== op.skuIndukDiminta) {
+          throw new InvariantError(
+            `Produk ${kemasan.sku} bukan hasil pemecahan dari ${op.skuIndukDiminta}`
+          );
+        }
+        if (!productMap.has(kemasan.sku_induk)) {
+          extraParentSkus.add(kemasan.sku_induk);
+        }
+      });
     }
 
-    if (jenis === 'assemble' || jenis === 'rakit') {
+    if (item.jenis === 'ASSEMBLE') {
       if (!product.is_bundle) {
         throw new InvariantError(
           `Produk ${item.sku} bukan produk paket (bundle)`
         );
       }
-      bundleSkus.push(product.sku);
+      bundleSkus.add(product.sku);
     }
   });
 
-  if (extraParentSkus.length > 0) {
-    const uniqueParents = [...new Set(extraParentSkus)];
-    const parentProducts =
-      await stockRepository.findProductsBySkus(uniqueParents);
+  if (extraParentSkus.size > 0) {
+    const parentProducts = await stockRepository.findProductsBySkus([
+      ...extraParentSkus,
+    ]);
     parentProducts.forEach((p) => productMap.set(p.sku, p));
-
-    uniqueParents.forEach((parentSku) => {
-      const parent = productMap.get(parentSku);
-      if (!parent) {
-        throw new NotFoundError(
-          `Produk induk dengan SKU ${parentSku} tidak ditemukan`
-        );
-      }
-      if (!parent.is_active) {
-        throw new InvariantError(`Produk induk ${parentSku} sudah nonaktif`);
-      }
-    });
+    extraParentSkus.forEach((parentSku) =>
+      ensureActiveProduct(parentSku, 'Produk induk')
+    );
   }
 
   const bundleComponentsMap = new Map();
   const componentSkus = [];
 
-  if (bundleSkus.length > 0) {
-    const uniqueBundles = [...new Set(bundleSkus)];
-    const components =
-      await stockRepository.findBundleComponentsBySkus(uniqueBundles);
+  if (bundleSkus.size > 0) {
+    const components = await stockRepository.findBundleComponentsBySkus([
+      ...bundleSkus,
+    ]);
 
     components.forEach((comp) => {
       if (!comp.komponen_aktif) {
@@ -285,11 +325,8 @@ const createBatchMovements = async ({ tanggal, items }) => {
       componentSkus.push(comp.sku_komponen);
     });
 
-    uniqueBundles.forEach((bSku) => {
-      if (
-        !bundleComponentsMap.has(bSku) ||
-        bundleComponentsMap.get(bSku).length === 0
-      ) {
+    bundleSkus.forEach((bSku) => {
+      if (!bundleComponentsMap.has(bSku)) {
         throw new InvariantError(
           `Komponen untuk paket ${bSku} belum dikonfigurasi`
         );
@@ -297,6 +334,7 @@ const createBatchMovements = async ({ tanggal, items }) => {
     });
   }
 
+  // 3. Simulasikan saldo agar mutasi keluar tidak membuat stok negatif.
   const allInvolvedSkus = [
     ...new Set([...productMap.keys(), ...componentSkus]),
   ];
@@ -308,7 +346,7 @@ const createBatchMovements = async ({ tanggal, items }) => {
 
   const getSimStock = (sku) => simulatedStockMap.get(sku) || 0;
   const adjustSimStock = (sku, delta) => {
-    const nextVal = getSimStock(sku) + delta;
+    const nextVal = round2(getSimStock(sku) + delta);
     if (nextVal < 0) {
       throw new InvariantError(
         `Stok ${sku} tidak mencukupi (tersedia: ${getSimStock(sku)}, dibutuhkan: ${Math.abs(delta)})`
@@ -318,108 +356,114 @@ const createBatchMovements = async ({ tanggal, items }) => {
   };
 
   const movementsToInsert = [];
+  const pushMovement = (sku, jenis, qty, ref, sumber) => {
+    movementsToInsert.push({
+      tanggal,
+      sku,
+      jenis,
+      qty: round2(qty),
+      ref,
+      sumber: clipText(sumber, MAX_SUMBER_LENGTH),
+    });
+  };
+
   let repackOperations = 0;
   let assembleOperations = 0;
-  const batchRefPrefix = `BATCH-${tanggal}`;
+  // Token unik per permintaan agar riwayat dapat mengelompokkan satu kali simpan.
+  const batchRefPrefix = `BATCH-${tanggal}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
 
   items.forEach((item, idx) => {
     const product = productMap.get(item.sku);
-    const jenis = item.jenis.toLowerCase();
-    const qty = Number(item.qty);
-    const catatan = item.catatan ? String(item.catatan).trim() : null;
+    const qty = round2(item.qty);
+    const { catatan } = item;
     const itemRef = `${batchRefPrefix}-${idx + 1}`;
 
-    if (jenis === 'restok' || jenis === 'restock_in') {
-      adjustSimStock(product.sku, qty);
-      movementsToInsert.push({
-        tanggal,
-        sku: product.sku,
-        jenis: 'RESTOCK_IN',
-        qty,
-        ref: itemRef,
-        sumber: catatan || 'Restok manual',
-      });
-    } else if (jenis === 'retur' || jenis === 'return_in') {
-      adjustSimStock(product.sku, qty);
-      movementsToInsert.push({
-        tanggal,
-        sku: product.sku,
-        jenis: 'RETURN_IN',
-        qty,
-        ref: itemRef,
-        sumber: catatan || 'Retur barang masuk',
-      });
-    } else if (jenis === 'rusak' || jenis === 'damaged_out') {
-      const outQty = -Math.abs(qty);
-      adjustSimStock(product.sku, outQty);
-      movementsToInsert.push({
-        tanggal,
-        sku: product.sku,
-        jenis: 'DAMAGED_OUT',
-        qty: outQty,
-        ref: itemRef,
-        sumber: catatan || 'Barang rusak / susut',
-      });
-    } else if (jenis === 'penyesuaian' || jenis === 'adjustment') {
-      adjustSimStock(product.sku, qty);
-      movementsToInsert.push({
-        tanggal,
-        sku: product.sku,
-        jenis: 'ADJUSTMENT',
-        qty,
-        ref: itemRef,
-        sumber: catatan || 'Penyesuaian stok manual',
-      });
-    } else if (jenis === 'repack') {
-      const faktor = Number(product.faktor_ke_induk);
-      const indukQtyOut = qty * faktor;
-      adjustSimStock(product.sku_induk, -indukQtyOut);
-      adjustSimStock(product.sku, qty);
+    switch (item.jenis) {
+      case 'RESTOCK_IN':
+        adjustSimStock(product.sku, qty);
+        pushMovement(
+          product.sku,
+          'RESTOCK_IN',
+          qty,
+          itemRef,
+          catatan || 'Restok manual'
+        );
+        break;
 
-      movementsToInsert.push({
-        tanggal,
-        sku: product.sku_induk,
-        jenis: 'SPLIT_OUT',
-        qty: -indukQtyOut,
-        ref: itemRef,
-        sumber: catatan || `Pemecahan ke ${product.sku}`,
-      });
-      movementsToInsert.push({
-        tanggal,
-        sku: product.sku,
-        jenis: 'SPLIT_IN',
-        qty,
-        ref: itemRef,
-        sumber: catatan || `Pemecahan dari ${product.sku_induk}`,
-      });
-      repackOperations += 1;
-    } else if (jenis === 'assemble' || jenis === 'rakit') {
-      const components = bundleComponentsMap.get(product.sku);
-      components.forEach((comp) => {
-        const compOut = qty * Number(comp.qty_komponen_per_paket);
-        adjustSimStock(comp.sku_komponen, -compOut);
-        movementsToInsert.push({
-          tanggal,
-          sku: comp.sku_komponen,
-          jenis: 'ASSEMBLE_OUT',
-          qty: -compOut,
-          ref: itemRef,
-          sumber: catatan || `Perakitan paket ${product.sku}`,
+      case 'RETURN_IN':
+        adjustSimStock(product.sku, qty);
+        pushMovement(
+          product.sku,
+          'RETURN_IN',
+          qty,
+          itemRef,
+          catatan || 'Retur barang masuk'
+        );
+        break;
+
+      case 'DAMAGED_OUT':
+        adjustSimStock(product.sku, -qty);
+        pushMovement(
+          product.sku,
+          'DAMAGED_OUT',
+          -qty,
+          itemRef,
+          catatan || 'Barang rusak / susut'
+        );
+        break;
+
+      case 'SPLIT':
+        expandRepackItem(item).forEach((op) => {
+          const kemasan = productMap.get(op.skuKemasan);
+          const qtyKemasan = round2(op.qtyKemasan);
+          const qtyInduk = round2(qtyKemasan * Number(kemasan.faktor_ke_induk));
+
+          adjustSimStock(kemasan.sku_induk, -qtyInduk);
+          adjustSimStock(kemasan.sku, qtyKemasan);
+
+          pushMovement(
+            kemasan.sku_induk,
+            'SPLIT_OUT',
+            -qtyInduk,
+            itemRef,
+            catatan || `Pemecahan ke ${kemasan.sku}`
+          );
+          pushMovement(
+            kemasan.sku,
+            'SPLIT_IN',
+            qtyKemasan,
+            itemRef,
+            catatan || `Pemecahan dari ${kemasan.sku_induk}`
+          );
+          repackOperations += 1;
         });
-      });
+        break;
 
-      adjustSimStock(product.sku, qty);
-      movementsToInsert.push({
-        tanggal,
-        sku: product.sku,
-        jenis: 'ASSEMBLE_IN',
-        qty,
-        ref: itemRef,
-        sumber: catatan || `Hasil perakitan paket ${product.sku}`,
-      });
-      assembleOperations += 1;
-    } else {
-      throw new InvariantError(`Jenis mutasi "${item.jenis}" tidak didukung`);
+      case 'ASSEMBLE':
+        bundleComponentsMap.get(product.sku).forEach((comp) => {
+          const compOut = round2(qty * Number(comp.qty_komponen_per_paket));
+          adjustSimStock(comp.sku_komponen, -compOut);
+          pushMovement(
+            comp.sku_komponen,
+            'ASSEMBLE_OUT',
+            -compOut,
+            itemRef,
+            catatan || `Perakitan paket ${product.sku}`
+          );
+        });
+        adjustSimStock(product.sku, qty);
+        pushMovement(
+          product.sku,
+          'ASSEMBLE_IN',
+          qty,
+          itemRef,
+          catatan || `Hasil perakitan paket ${product.sku}`
+        );
+        assembleOperations += 1;
+        break;
+
+      default:
+        throw new InvariantError(`Jenis mutasi "${item.jenis}" tidak didukung`);
     }
   });
 
@@ -562,11 +606,12 @@ const submitStockOpname = async ({ tanggal, level, items }) => {
     const product = productMap.get(item.sku);
     const stokSistem = stockMap.get(item.sku) || 0;
     const isiPerKarung = Number(product.isi_per_pembelian) || 50;
-    const stokFisik =
+    const stokFisik = round2(
       level === 'induk'
         ? Number(item.stokFisik) * isiPerKarung
-        : Number(item.stokFisik);
-    const selisih = stokFisik - stokSistem;
+        : Number(item.stokFisik)
+    );
+    const selisih = round2(stokFisik - stokSistem);
     const alasanSelisih = item.alasanSelisih
       ? String(item.alasanSelisih).trim()
       : null;
@@ -579,9 +624,12 @@ const submitStockOpname = async ({ tanggal, level, items }) => {
     }
 
     const labelAlasan = alasanSelisih || 'Sesuai';
-    const sumber = catatan
-      ? `Stok Opname (${labelAlasan}): ${catatan}`
-      : `Stok Opname (${labelAlasan})`;
+    const sumber = clipText(
+      catatan
+        ? `Stok Opname (${labelAlasan}): ${catatan}`
+        : `Stok Opname (${labelAlasan})`,
+      MAX_SUMBER_LENGTH
+    );
 
     return {
       sku: item.sku,
@@ -633,12 +681,83 @@ const submitStockOpname = async ({ tanggal, level, items }) => {
   };
 };
 
+const IMPORT_REF_PREFIX = 'IMPORT-';
+const IMPORT_DEFAULT_SUMBER_PREFIX = 'Import Berkas (';
+
+const movementFingerprint = ({ tanggal, sku, jenis, qty, note }) =>
+  `${tanggal}|${sku}|${jenis}|${round2(qty)}|${String(note || '')
+    .trim()
+    .toLowerCase()}`;
+
+// Baris import tanpa catatan disimpan dengan sumber default "Import Berkas (<nama berkas>)".
+// Saat membandingkan, sumber default itu dianggap sebagai catatan kosong agar
+// unggahan ulang berkas yang sama (walau beda nama berkas) tetap terdeteksi duplikat.
+const noteFromStoredMovement = (movement) => {
+  const ref = String(movement.ref || '');
+  const sumber = String(movement.sumber || '');
+  if (
+    ref.startsWith(IMPORT_REF_PREFIX) &&
+    sumber.startsWith(IMPORT_DEFAULT_SUMBER_PREFIX)
+  ) {
+    return '';
+  }
+  return sumber;
+};
+
+/**
+ * Memisahkan baris import menjadi baris unik dan duplikat
+ * (duplikat di dalam berkas yang sama ataupun sudah tercatat di database).
+ */
+const splitDuplicateImportRows = async (rows) => {
+  if (rows.length === 0) {
+    return { uniqueRows: [], duplicateRows: [] };
+  }
+
+  const dates = rows.map((r) => r.tanggal).sort();
+  const existingMovements =
+    await stockRepository.findExistingStockMovementsForDedup({
+      minDate: dates[0],
+      maxDate: dates[dates.length - 1],
+      skus: [...new Set(rows.map((r) => r.sku))],
+    });
+
+  const dbFingerprints = new Set(
+    existingMovements.map((m) =>
+      movementFingerprint({ ...m, note: noteFromStoredMovement(m) })
+    )
+  );
+  const fileFingerprints = new Set();
+  const uniqueRows = [];
+  const duplicateRows = [];
+
+  rows.forEach((row) => {
+    const fingerprint = movementFingerprint({ ...row, note: row.catatan });
+
+    if (fileFingerprints.has(fingerprint)) {
+      duplicateRows.push({
+        row,
+        reason: 'Baris duplikat di dalam berkas yang sama',
+      });
+    } else if (dbFingerprints.has(fingerprint)) {
+      duplicateRows.push({
+        row,
+        reason: 'Mutasi identik sudah tercatat di database',
+      });
+    } else {
+      fileFingerprints.add(fingerprint);
+      uniqueRows.push(row);
+    }
+  });
+
+  return { uniqueRows, duplicateRows };
+};
+
 const previewStockImport = async (file) => {
   if (!file) {
     throw new InvariantError('Berkas import stok wajib diunggah');
   }
 
-  const parsed = parseStockImportFile(file);
+  const parsed = await parseStockImportFile(file);
   const rawRows = Array.isArray(parsed) ? parsed : parsed.rows || [];
   const fileName =
     (parsed && parsed.fileName) || file.originalname || 'import_stok.csv';
@@ -789,69 +908,24 @@ const previewStockImport = async (file) => {
     });
   });
 
-  const validRows = [];
-  const duplicateRows = [];
+  const { uniqueRows, duplicateRows: duplicates } =
+    await splitDuplicateImportRows(candidateValidRows);
 
-  if (candidateValidRows.length > 0) {
-    const dates = candidateValidRows.map((r) => r.tanggal).sort();
-    const minDate = dates[0];
-    const maxDate = dates[dates.length - 1];
-    const validSkus = [...new Set(candidateValidRows.map((r) => r.sku))];
-
-    const existingMovements =
-      await stockRepository.findExistingStockMovementsForDedup({
-        minDate,
-        maxDate,
-        skus: validSkus,
-      });
-
-    const dbFingerprints = new Set(
-      existingMovements.map(
-        (m) =>
-          `${m.tanggal}|${m.sku}|${m.jenis}|${Number(m.qty)}|${String(
-            m.sumber || ''
-          )
-            .trim()
-            .toLowerCase()}`
-      )
-    );
-
-    const fileFingerprints = new Set();
-
-    candidateValidRows.forEach((row) => {
-      const fingerprint = `${row.tanggal}|${row.sku}|${row.jenis}|${row.qty}|${String(
-        row.catatan || ''
-      )
-        .trim()
-        .toLowerCase()}`;
-
-      if (fileFingerprints.has(fingerprint)) {
-        duplicateRows.push({
-          rowNumber: row.rowNumber,
-          rawText: row.rawText,
-          reason: 'Baris duplikat di dalam berkas yang sama',
-        });
-      } else if (dbFingerprints.has(fingerprint)) {
-        duplicateRows.push({
-          rowNumber: row.rowNumber,
-          rawText: row.rawText,
-          reason: 'Mutasi identik sudah tercatat di database',
-        });
-      } else {
-        fileFingerprints.add(fingerprint);
-        validRows.push({
-          rowNumber: row.rowNumber,
-          tanggal: row.tanggal,
-          sku: row.sku,
-          namaProduk: row.namaProduk,
-          satuanStok: row.satuanStok,
-          jenis: row.jenis,
-          qty: row.qty,
-          catatan: row.catatan,
-        });
-      }
-    });
-  }
+  const validRows = uniqueRows.map((row) => ({
+    rowNumber: row.rowNumber,
+    tanggal: row.tanggal,
+    sku: row.sku,
+    namaProduk: row.namaProduk,
+    satuanStok: row.satuanStok,
+    jenis: row.jenis,
+    qty: row.qty,
+    catatan: row.catatan,
+  }));
+  const duplicateRows = duplicates.map(({ row, reason }) => ({
+    rowNumber: row.rowNumber,
+    rawText: row.rawText,
+    reason,
+  }));
 
   return {
     fileName,
@@ -872,6 +946,7 @@ const commitStockImport = async ({
   duplicateCount,
   validRows,
   rejectedRows,
+  importedBy,
 }) => {
   if (validRows.length > 0) {
     const skus = [...new Set(validRows.map((r) => r.sku))];
@@ -891,50 +966,44 @@ const commitStockImport = async ({
     });
   }
 
-  const totalRows = validRows.length + duplicateCount + rejectedRows.length;
+  // Cek ulang duplikat di server: payload commit berasal dari client sehingga
+  // tidak boleh dipercaya begitu saja (mis. tombol simpan ditekan dua kali).
+  const { uniqueRows, duplicateRows } =
+    await splitDuplicateImportRows(validRows);
+  const totalDuplicate = duplicateCount + duplicateRows.length;
+
+  if (uniqueRows.length === 0 && validRows.length > 0) {
+    throw new InvariantError(
+      'Semua baris valid sudah tercatat sebelumnya, tidak ada data baru untuk disimpan'
+    );
+  }
+
+  const totalRows = uniqueRows.length + totalDuplicate + rejectedRows.length;
   const { batch, insertedMovements } =
     await stockRepository.commitStockImportBatch({
       fileName,
       totalRows,
-      validRows,
-      duplicateCount,
+      validRows: uniqueRows,
+      duplicateCount: totalDuplicate,
       rejectedRows,
+      importedBy,
     });
-
-  const batchId = Number(
-    batch.batch_id !== undefined ? batch.batch_id : batch.id
-  );
-  const resolvedFileName =
-    batch.berkas ||
-    batch.nama_berkas ||
-    batch.nama_file ||
-    batch.file_name ||
-    fileName;
 
   return {
     batch: {
-      batchId,
-      berkas: resolvedFileName,
-      sumber: batch.sumber || batch.jenis || 'IMPORT_STOK_UI',
-      barisTotal: Number(
-        batch.baris_total !== undefined ? batch.baris_total : totalRows
-      ),
-      barisBaru: Number(
-        batch.baris_baru !== undefined ? batch.baris_baru : validRows.length
-      ),
-      barisDuplikat: Number(
-        batch.baris_duplikat !== undefined
-          ? batch.baris_duplikat
-          : duplicateCount
-      ),
-      barisDitolak: Number(
-        batch.baris_ditolak !== undefined
-          ? batch.baris_ditolak
-          : rejectedRows.length
-      ),
-      status: batch.status || 'berhasil',
+      batchId: Number(batch.batch_id),
+      jenisImpor: batch.jenis_impor,
+      berkas: batch.nama_berkas,
+      barisTotal: Number(batch.baris_total),
+      barisBaru: Number(batch.baris_baru),
+      barisDuplikat: Number(batch.baris_duplikat),
+      barisDitolak: Number(batch.baris_ditolak),
+      status: batch.status,
+      diimporOleh: batch.diimpor_oleh,
+      diimporPada: batch.diimpor_pada,
     },
     insertedCount: insertedMovements.length,
+    skippedDuplicateCount: duplicateRows.length,
     rejectedLoggedCount: rejectedRows.length,
   };
 };
